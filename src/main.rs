@@ -5,11 +5,16 @@
 */
 extern crate native_windows_gui as nwg;
 use nwg::NativeUi;
+use std::fs::Metadata;
+use std::fs::{self, DirEntry};
+use std::io;
+use std::path::Path;
 
 #[derive(Default)]
 pub struct SystemTray {
     window: nwg::MessageWindow,
     icon: nwg::Icon,
+    icon2: nwg::Icon,
     tray: nwg::TrayNotification,
     tray_menu: nwg::Menu,
     tray_item1: nwg::MenuItem,
@@ -24,17 +29,45 @@ impl SystemTray {
     }
 
     fn hello1(&self) {
-        nwg::simple_message("Hello", "Hello World!");
+        nwg::simple_message("Hello", &self.get_message());
     }
 
     fn hello2(&self) {
         let flags = nwg::TrayNotificationFlags::USER_ICON | nwg::TrayNotificationFlags::LARGE_ICON;
         self.tray.show(
             "Hello World",
-            Some("Welcome to my application"),
+            Some(&self.get_message()),
             Some(flags),
-            Some(&self.icon),
+            Some(&self.icon2),
         );
+    }
+
+    fn get_vec_paths(&self) -> Result<Result<Vec<std::fs::Metadata>, io::Error>, io::Error> {
+        let result = fs::read_dir("typeyourpathhere")?
+            .map(|res| res.map(|e| e.metadata()))
+            .collect::<Result<Result<Vec<std::fs::Metadata>, io::Error>, io::Error>>()?;
+        Ok(result)
+    }
+
+    fn get_message(&self) -> String {
+        let mut content: String = "Files: ".to_string();
+        let result = &self.get_vec_paths();
+        match result {
+            Ok(items_result) => {
+                match items_result {
+                    Ok(items) => {
+                        for item in items {
+                            //let path = pathBuf.into_os_string().into_string().unwrap();
+                            content = format!("{}{:?}", &content, &item);
+                        }
+                    }
+                    Err(e) => {}
+                }
+            }
+            Err(e) => {}
+        }
+
+        content
     }
 
     fn exit(&self) {
@@ -65,6 +98,10 @@ mod system_tray_ui {
             nwg::Icon::builder()
                 .source_file(Some("./resources/cog.ico"))
                 .build(&mut data.icon)?;
+
+            nwg::Icon::builder()
+                .source_file(Some("./resources/love.ico"))
+                .build(&mut data.icon2)?;
 
             // Controls
             nwg::MessageWindow::builder().build(&mut data.window)?;
