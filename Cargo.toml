@@ -7,5 +7,11 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-native-windows-gui = {version = "1.0.1", features = ["tray-notification", "message-window", "menu", "cursor"]}
+native-windows-gui = {version = "1.0.1", features = ["file-dialog", "color-dialog", "font-dialog", "datetime-picker", "progress-bar", "timer", "notice", "list-view", "cursor", "image-decoder",
+       "tabs", "tree-view", "fancy-window", "listbox", "combobox", "tray-notification", "message-window", "number-select", "clipboard", "menu",
+       "trackbar", "extern-canvas", "frame", "tooltip", "status-bar", "winnls", "textbox", "rich-textbox", "image-list", "embed-resource", "scroll-bar",
+       "tree-view-iterator", "flexbox"]}
 native-windows-derive = "1.0.0"
+confy = "0.4.0"
+serde = {version = "1.0.114", features = ["derive"]}
+rust-ini = "0.15.3"

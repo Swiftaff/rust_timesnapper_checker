@@ -3,12 +3,25 @@
 
     Requires the following features: `cargo run --example system_tray --features "tray-notification message-window menu cursor"`
 */
+
+extern crate native_windows_derive as nwd;
 extern crate native_windows_gui as nwg;
 use nwg::NativeUi;
-use std::fs::Metadata;
-use std::fs::{self, DirEntry};
+use serde::{Deserialize, Serialize};
+use std::fs::{self};
 use std::io;
-use std::path::Path;
+
+#[derive(Serialize, Deserialize)]
+struct MyConfig {
+    path: String,
+}
+
+/// `MyConfig` implements `Default`
+impl ::std::default::Default for MyConfig {
+    fn default() -> Self {
+        Self { path: "".into() }
+    }
+}
 
 #[derive(Default)]
 pub struct SystemTray {
@@ -20,6 +33,7 @@ pub struct SystemTray {
     tray_item1: nwg::MenuItem,
     tray_item2: nwg::MenuItem,
     tray_item3: nwg::MenuItem,
+    tray_item4: nwg::MenuItem,
 }
 
 impl SystemTray {
@@ -28,22 +42,33 @@ impl SystemTray {
         self.tray_menu.popup(x, y);
     }
 
+    fn get_config_path(&self) -> String {
+        let result_cfg: Result<MyConfig, confy::ConfyError> = confy::load("rust-win-gui");
+        match result_cfg {
+            Ok(cfg) => cfg.path,
+            Err(e) => format!("{:?}", e),
+        }
+    }
+
+    fn about(&self) {
+        let config_path = &self.get_config_path();
+        let content = format!("This tool will read the contents of a folder at the specified path.\r\nYou can update the path via the config file.\r\nIt's probably saved here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}", config_path);
+        nwg::simple_message("Settings", &content);
+    }
+
     fn hello1(&self) {
         nwg::simple_message("Hello", &self.get_message());
     }
 
     fn hello2(&self) {
         let flags = nwg::TrayNotificationFlags::USER_ICON | nwg::TrayNotificationFlags::LARGE_ICON;
-        self.tray.show(
-            "Hello World",
-            Some(&self.get_message()),
-            Some(flags),
-            Some(&self.icon2),
-        );
+        self.tray
+            .show("Hello World", Some("testy"), Some(flags), Some(&self.icon2));
     }
 
     fn get_vec_paths(&self) -> Result<Result<Vec<std::fs::Metadata>, io::Error>, io::Error> {
-        let result = fs::read_dir("typeyourpathhere")?
+        let config_path = &self.get_config_path();
+        let result = fs::read_dir(config_path)?
             .map(|res| res.map(|e| e.metadata()))
             .collect::<Result<Result<Vec<std::fs::Metadata>, io::Error>, io::Error>>()?;
         Ok(result)
@@ -61,10 +86,10 @@ impl SystemTray {
                             content = format!("{}{:?}", &content, &item);
                         }
                     }
-                    Err(e) => {}
+                    Err(_) => {}
                 }
             }
-            Err(e) => {}
+            Err(_) => {}
         }
 
         content
@@ -123,14 +148,19 @@ mod system_tray_ui {
                 .build(&mut data.tray_item1)?;
 
             nwg::MenuItem::builder()
-                .text("Popup")
+                .text("Settings")
                 .parent(&data.tray_menu)
                 .build(&mut data.tray_item2)?;
 
             nwg::MenuItem::builder()
-                .text("Exit")
+                .text("Popup")
                 .parent(&data.tray_menu)
                 .build(&mut data.tray_item3)?;
+
+            nwg::MenuItem::builder()
+                .text("Exit")
+                .parent(&data.tray_menu)
+                .build(&mut data.tray_item4)?;
 
             // Wrap-up
             let ui = SystemTrayUi {
@@ -152,8 +182,10 @@ mod system_tray_ui {
                             if &handle == &evt_ui.tray_item1 {
                                 SystemTray::hello1(&evt_ui);
                             } else if &handle == &evt_ui.tray_item2 {
-                                SystemTray::hello2(&evt_ui);
+                                SystemTray::about(&evt_ui);
                             } else if &handle == &evt_ui.tray_item3 {
+                                SystemTray::hello2(&evt_ui);
+                            } else if &handle == &evt_ui.tray_item4 {
                                 SystemTray::exit(&evt_ui);
                             }
                         }
