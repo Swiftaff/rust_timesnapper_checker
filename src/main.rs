@@ -4,9 +4,11 @@
     Requires the following features: `cargo run --example system_tray --features "tray-notification message-window menu cursor"`
 */
 
+extern crate chrono;
 extern crate ini;
 extern crate native_windows_derive as nwd;
 extern crate native_windows_gui as nwg;
+use chrono::{DateTime, Utc};
 use ini::ini::Error;
 use ini::Ini;
 use nwg::NativeUi;
@@ -54,11 +56,14 @@ impl SystemTray {
     }
 
     fn get_config_path_from_timesnapper_ini(&self) -> String {
-        let result_conf: Result<Ini, Error> = Ini::load_from_file("");
+        //first get path from this apps config using confy
+        let config_path = &self.get_config_path_from_confy();
+
+        let result_conf: Result<Ini, Error> = Ini::load_from_file_noescape(config_path);
         match result_conf {
             Ok(conf) => {
                 let section: &ini::ini::Properties = conf.section(None::<String>).unwrap();
-                section.get("Path").unwrap().to_string()
+               section.get("Path").unwrap().to_string()
             }
             Err(e) => match e {
                 Error::Io(io) => "This is probably an error because we do not know where your Timesnapper Settings.ini is\r\nYou should find it here:\r\nC:\\Users\\<your-user>\\AppData\\Roaming\\TimeSnapper\\Settings.ini\r\nPlease update your config.".to_string(),
@@ -74,7 +79,8 @@ impl SystemTray {
     }
 
     fn todays_stats(&self) {
-        nwg::simple_message("Hello", &self.get_message());
+        //nwg::simple_message("Hello", &self.get_todays_stats());
+        nwg::simple_message("Hello", &self.get_todays_snapshots_folder());
     }
 
     fn notification(&self) {
@@ -83,17 +89,89 @@ impl SystemTray {
             .show("Hello World", Some("testy"), Some(flags), Some(&self.icon2));
     }
 
-    fn get_vec_paths(&self) -> Result<Result<Vec<std::fs::Metadata>, io::Error>, io::Error> {
-        let config_path = &self.get_config_path_from_confy();
+    fn get_todays_snapshots_folder(&self) -> String {
+        self.get_all_folders()
+    }
+
+    fn get_all_folders(&self) -> String {
+        let config_path = &self.get_config_path_from_timesnapper_ini();
+        let result = &self.get_vec_direntries();
+        match result {
+            Ok(vec_direntries) => {
+                let todays_directory = &self.get_todays_directory(vec_direntries);
+                println!("ok {:?}", todays_directory);
+            }
+            Err(e) => println!("error from -- {} -- {:?}", config_path, e),
+        }
+        format!("get all folders from {}", &config_path)
+    }
+
+    fn get_vec_direntries(&self) -> Result<Vec<std::fs::DirEntry>, io::Error> {
+        let config_path = &self.get_config_path_from_timesnapper_ini();
+        let result = fs::read_dir(config_path)?
+            //.filter_map(|r| r.ok())
+            //.map(|res| res.map(|e| e.metadata()))
+            .collect::<Result<Vec<std::fs::DirEntry>, io::Error>>()?;
+        Ok(result)
+    }
+
+    fn get_vec_metadata(&self) -> Result<Result<Vec<std::fs::Metadata>, io::Error>, io::Error> {
+        let config_path = &self.get_config_path_from_timesnapper_ini();
         let result = fs::read_dir(config_path)?
             .map(|res| res.map(|e| e.metadata()))
             .collect::<Result<Result<Vec<std::fs::Metadata>, io::Error>, io::Error>>()?;
         Ok(result)
     }
 
-    fn get_message(&self) -> String {
+    fn get_todays_directory<'a>(
+        &self,
+        vec_direntries: &'a Vec<std::fs::DirEntry>,
+    ) -> Result<&'a std::fs::DirEntry, String> {
+        let now: DateTime<Utc> = Utc::now();
+        let todays_date_as_string = format!("{}", now.format("%Y-%m-%d"));
+        //println!("{:?}", todays_date_as_string);
+        let x = vec_direntries
+            .iter()
+            .filter(|d| {
+                let mut fname = d.file_name().into_string();
+                match fname {
+                    Ok(d) => {
+                        if d == todays_date_as_string {
+                            return true;
+                        } else {
+                            return false;
+                        }
+                    }
+                    error => return false,
+                }
+            })
+            .collect::<Vec<&std::fs::DirEntry>>();
+        if x.len() == 1 {
+            Ok(x[0])
+        } else {
+            Err(format!("{:?}", x))
+        }
+        //println!("{:?}", x);
+        /*
+        for n in 0..vec_direntries.len() {
+            let mut fname = vec_direntries[n].file_name().into_string();
+            match fname {
+                Ok(d) => {
+                    if d == todays_date_as_string {
+                        break;
+                        Some((todays_date_as_string, vec_direntries[n]))
+                    }
+                }
+                error => None,
+            }
+        }
+        None*/
+        //todays_date_as_string
+    }
+
+    /*fn get_todays_stats(&self) -> String {
         let mut content: String = "Files: ".to_string();
-        let result = &self.get_vec_paths();
+        let result = &self.get_vec_metadata();
         match result {
             Ok(items_result) => {
                 match items_result {
@@ -110,7 +188,7 @@ impl SystemTray {
         }
 
         content
-    }
+    }*/
 
     fn exit(&self) {
         nwg::stop_thread_dispatch();
