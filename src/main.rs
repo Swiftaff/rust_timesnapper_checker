@@ -4,8 +4,11 @@
     Requires the following features: `cargo run --example system_tray --features "tray-notification message-window menu cursor"`
 */
 
+extern crate ini;
 extern crate native_windows_derive as nwd;
 extern crate native_windows_gui as nwg;
+use ini::ini::Error;
+use ini::Ini;
 use nwg::NativeUi;
 use serde::{Deserialize, Serialize};
 use std::fs::{self};
@@ -42,7 +45,7 @@ impl SystemTray {
         self.tray_menu.popup(x, y);
     }
 
-    fn get_config_path(&self) -> String {
+    fn get_config_path_from_confy(&self) -> String {
         let result_cfg: Result<MyConfig, confy::ConfyError> = confy::load("rust-win-gui");
         match result_cfg {
             Ok(cfg) => cfg.path,
@@ -50,24 +53,38 @@ impl SystemTray {
         }
     }
 
+    fn get_config_path_from_timesnapper_ini(&self) -> String {
+        let result_conf: Result<Ini, Error> = Ini::load_from_file("");
+        match result_conf {
+            Ok(conf) => {
+                let section: &ini::ini::Properties = conf.section(None::<String>).unwrap();
+                section.get("Path").unwrap().to_string()
+            }
+            Err(e) => match e {
+                Error::Io(io) => "This is probably an error because we do not know where your Timesnapper Settings.ini is\r\nYou should find it here:\r\nC:\\Users\\<your-user>\\AppData\\Roaming\\TimeSnapper\\Settings.ini\r\nPlease update your config.".to_string(),
+                Error::Parse(pe) => pe.msg,
+            },
+        }
+    }
+
     fn about(&self) {
-        let config_path = &self.get_config_path();
+        let config_path = &self.get_config_path_from_timesnapper_ini();
         let content = format!("This tool will read the contents of a folder at the specified path.\r\nYou can update the path via the config file.\r\nIt's probably saved here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}", config_path);
         nwg::simple_message("Settings", &content);
     }
 
-    fn hello1(&self) {
+    fn todays_stats(&self) {
         nwg::simple_message("Hello", &self.get_message());
     }
 
-    fn hello2(&self) {
+    fn notification(&self) {
         let flags = nwg::TrayNotificationFlags::USER_ICON | nwg::TrayNotificationFlags::LARGE_ICON;
         self.tray
             .show("Hello World", Some("testy"), Some(flags), Some(&self.icon2));
     }
 
     fn get_vec_paths(&self) -> Result<Result<Vec<std::fs::Metadata>, io::Error>, io::Error> {
-        let config_path = &self.get_config_path();
+        let config_path = &self.get_config_path_from_confy();
         let result = fs::read_dir(config_path)?
             .map(|res| res.map(|e| e.metadata()))
             .collect::<Result<Result<Vec<std::fs::Metadata>, io::Error>, io::Error>>()?;
@@ -143,7 +160,7 @@ mod system_tray_ui {
                 .build(&mut data.tray_menu)?;
 
             nwg::MenuItem::builder()
-                .text("Hello")
+                .text("Today's stats")
                 .parent(&data.tray_menu)
                 .build(&mut data.tray_item1)?;
 
@@ -153,7 +170,7 @@ mod system_tray_ui {
                 .build(&mut data.tray_item2)?;
 
             nwg::MenuItem::builder()
-                .text("Popup")
+                .text("Send Notification")
                 .parent(&data.tray_menu)
                 .build(&mut data.tray_item3)?;
 
@@ -180,11 +197,11 @@ mod system_tray_ui {
                         }
                         E::OnMenuItemSelected => {
                             if &handle == &evt_ui.tray_item1 {
-                                SystemTray::hello1(&evt_ui);
+                                SystemTray::todays_stats(&evt_ui);
                             } else if &handle == &evt_ui.tray_item2 {
                                 SystemTray::about(&evt_ui);
                             } else if &handle == &evt_ui.tray_item3 {
-                                SystemTray::hello2(&evt_ui);
+                                SystemTray::notification(&evt_ui);
                             } else if &handle == &evt_ui.tray_item4 {
                                 SystemTray::exit(&evt_ui);
                             }
