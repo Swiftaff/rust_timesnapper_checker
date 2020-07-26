@@ -1,7 +1,8 @@
+#![windows_subsystem = "windows"]
 /*!
     An application that runs in the system tray.
 
-    Requires the following features: `cargo run --example system_tray --features "tray-notification message-window menu cursor"`
+    See also note for distributing... https://gabdube.github.io/native-windows-gui/native-windows-docs/distribute.html
 */
 
 extern crate chrono;
@@ -32,7 +33,7 @@ impl ::std::default::Default for MyConfig {
 pub struct SystemTray {
     window: nwg::MessageWindow,
     icon: nwg::Icon,
-    icon2: nwg::Icon,
+    icon_warning: nwg::Icon,
     tray: nwg::TrayNotification,
     tray_menu: nwg::Menu,
     tray_item1: nwg::MenuItem,
@@ -74,7 +75,7 @@ impl SystemTray {
 
     fn about(&self) {
         let config_path = &self.get_property_from_timesnapper_ini("Path");
-        let content = format!("This tool will read the contents of a folder at the specified path.\r\nYou can update the path via the config file.\r\nIt's probably saved here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}", config_path);
+        let content = format!("This tool will read the contents of a folder at the specified path.\r\nYou can update the path via the config file.\r\nIt's probably saved here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}\r\n\r\n<div>Warning Icon made by https://www.flaticon.com/authors/vectors-market", config_path);
         nwg::simple_message("Settings", &content);
     }
 
@@ -90,66 +91,44 @@ impl SystemTray {
             "Timesnapper checker",
             Some("testy"),
             Some(flags),
-            Some(&self.icon2),
+            Some(&self.icon_warning),
         );
     }
 
     fn get_todays_snapshots_folder(&self) {
         let config_path = self.get_property_from_timesnapper_ini("Path");
-        let interval_string = self.get_property_from_timesnapper_ini("Interval");
+
         let result = &self.get_vec_direntries(config_path.clone());
         match result {
             Ok(vec_direntries) => {
                 let result_todays_directory_path = &self.get_todays_directory_path(vec_direntries);
                 let files = &self.get_todays_directory_files(result_todays_directory_path);
+                let str_time = &self.get_time_spent_string(files);
+                let (last_hour_count, last_hour_size_warning) =
+                    self.get_count_last_hours_files_too_small(files);
+                let notification_text =
+                    &self.get_last_hour_text(last_hour_count, last_hour_size_warning);
+                let icon = if last_hour_size_warning > 0 {
+                    &self.icon_warning
+                } else {
+                    &self.icon
+                };
 
                 //TODO
-                //get x screensperminute from timesnapper ini
-                //count total, total x screensperminute for notification
-                let count = files.len() as u32;
-                let result_interval: Result<u32, std::num::ParseIntError> = interval_string.parse();
-                let interval = match result_interval {
-                    Ok(i) => i,
-                    Err(e) => 999,
-                };
-                let total = count * interval;
-                let total_hours = (total / 60);
-                let remaining_minutes = total - (total_hours * 60);
-                let str_time = if total_hours == 0 {
-                    format!("{:?}mins", total)
-                } else if remaining_minutes == 0 {
-                    if total_hours == 1 {
-                        format!("{:?}hr", total_hours)
-                    } else {
-                        format!("{:?}hrs", total_hours)
-                    }
-                } else {
-                    if total_hours == 1 {
-                        format!("{:?}hr {:?}mins", total_hours, remaining_minutes)
-                    } else {
-                        format!("{:?}hrs {:?}mins", total_hours, remaining_minutes)
-                    }
-                };
-                //sort files by date added, filter by last hour, count number below X in size in last hour - to notify about black ones
-
                 //elsewhere - run this every x minutes
-
                 //allow editing: ini location
+                //allow editing on/off times for notifications
+                //link to snapshots folder
+                //fix div in about, add other icon ref
 
                 let flags =
                     nwg::TrayNotificationFlags::USER_ICON | nwg::TrayNotificationFlags::LARGE_ICON;
                 self.tray.show(
-                    "Timesnapper checker",
+                    notification_text,
                     Some(&format!("{} so far today", str_time)),
                     Some(flags),
-                    Some(&self.icon2),
+                    Some(icon),
                 );
-
-                println!("count:{}", count);
-                println!("interval:{:?}", interval);
-                println!("total:{:?}", total);
-                println!("str_time:{:?}", str_time);
-                println!("files: {:?}", files);
             }
             Err(e) => println!(
                 "error from get_vec_direntries -- {} -- {:?}",
@@ -157,6 +136,79 @@ impl SystemTray {
             ),
         }
         //format!("get all folders from {}", &config_path)
+    }
+
+    fn get_last_hour_text(&self, last_hour_count: u32, last_hour_size_warning: u32) -> String {
+        let last_hour_spent = self.get_hrs_mins(last_hour_count);
+        if last_hour_size_warning == 1 {
+            format!(
+                "*1* Timesnapper BLANK during {} of the last hour",
+                last_hour_spent
+            )
+        } else if last_hour_size_warning > 1 {
+            format!(
+                "*{:?}* Timesnapper BLANKS during {} of the last hour",
+                last_hour_size_warning, last_hour_spent
+            )
+        } else {
+            format!("{} snapped in the last hour", last_hour_spent)
+        }
+    }
+
+    fn get_count_last_hours_files_too_small(&self, files: &Vec<std::fs::DirEntry>) -> (u32, u32) {
+        let mut last_hour_count: u32 = 0;
+        let mut last_hour_size_warning: u32 = 0;
+        for entry in files {
+            let metadata = entry.metadata().unwrap();
+            let last_modified = metadata.modified().unwrap().elapsed().unwrap().as_secs();
+            let filesize = metadata.len();
+            println!("{:?}", filesize);
+
+            if last_modified < 24 * 3600 {
+                last_hour_count += 1;
+                if filesize < 80000 {
+                    last_hour_size_warning += 1;
+                }
+            }
+        }
+        (last_hour_count, last_hour_size_warning)
+    }
+
+    fn get_time_spent_string(&self, files: &Vec<std::fs::DirEntry>) -> String {
+        let count = files.len() as u32;
+        self.get_hrs_mins(count)
+    }
+
+    fn get_hrs_mins(&self, count: u32) -> String {
+        let interval_string = self.get_property_from_timesnapper_ini("Interval");
+        let result_interval: Result<u32, std::num::ParseIntError> = interval_string.parse();
+        let interval = match result_interval {
+            Ok(i) => i,
+            Err(e) => 999,
+        };
+        let total_seconds = count * interval;
+        let total_minutes = count * interval / 60;
+        let total_hours = (total_seconds / 3600);
+        let remaining_minutes = total_minutes - (total_hours * 3600);
+        if total_hours == 0 {
+            if total_minutes == 0 {
+                format!("{:?}seconds", total_seconds)
+            } else {
+                format!("{:?}mins", total_minutes)
+            }
+        } else if remaining_minutes == 0 {
+            if total_hours == 1 {
+                format!("{:?}hr", total_hours)
+            } else {
+                format!("{:?}hrs", total_hours)
+            }
+        } else {
+            if total_hours == 1 {
+                format!("{:?}hr {:?}mins", total_hours, remaining_minutes)
+            } else {
+                format!("{:?}hrs {:?}mins", total_hours, remaining_minutes)
+            }
+        }
     }
 
     fn get_vec_direntries(&self, config_path: String) -> Result<Vec<std::fs::DirEntry>, io::Error> {
@@ -282,8 +334,8 @@ mod system_tray_ui {
                 .build(&mut data.icon)?;
 
             nwg::Icon::builder()
-                .source_file(Some("./resources/love.ico"))
-                .build(&mut data.icon2)?;
+                .source_file(Some("./resources/warning.ico"))
+                .build(&mut data.icon_warning)?;
 
             // Controls
             nwg::MessageWindow::builder().build(&mut data.window)?;
