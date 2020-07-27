@@ -12,6 +12,7 @@ extern crate native_windows_gui as nwg;
 use chrono::{DateTime, Utc};
 use ini::ini::Error;
 use ini::Ini;
+use nwd::NwgUi;
 use nwg::NativeUi;
 use serde::{Deserialize, Serialize};
 use std::fs::{self};
@@ -29,17 +30,35 @@ impl ::std::default::Default for MyConfig {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, NwgUi)]
 pub struct SystemTray {
+    #[nwg_control]
     window: nwg::MessageWindow,
+
+    #[nwg_resource(source_file: Some("./resources/cog.ico"))]
     icon: nwg::Icon,
+
+    #[nwg_resource(source_file: Some("./resources/warning.ico"))]
     icon_warning: nwg::Icon,
+
+    #[nwg_control(icon: Some(&data.icon), tip: Some("Right-click for menu"))]
+    #[nwg_events(OnContextMenu: [SystemTray::show_menu])]
     tray: nwg::TrayNotification,
+
+    #[nwg_control(parent: window, popup: true)]
     tray_menu: nwg::Menu,
+
+    #[nwg_control(parent: tray_menu, text: "Today's Stats")]
+    #[nwg_events(OnMenuItemSelected: [SystemTray::todays_stats])]
     tray_item1: nwg::MenuItem,
+
+    #[nwg_control(parent: tray_menu, text: "Settings")]
+    #[nwg_events(OnMenuItemSelected: [SystemTray::about])]
     tray_item2: nwg::MenuItem,
+
+    #[nwg_control(parent: tray_menu, text: "Exit")]
+    #[nwg_events(OnMenuItemSelected: [SystemTray::exit])]
     tray_item3: nwg::MenuItem,
-    tray_item4: nwg::MenuItem,
 }
 
 impl SystemTray {
@@ -48,29 +67,8 @@ impl SystemTray {
         self.tray_menu.popup(x, y);
     }
 
-    fn get_config_path_from_confy(&self) -> String {
-        let result_cfg: Result<MyConfig, confy::ConfyError> = confy::load("rust-win-gui");
-        match result_cfg {
-            Ok(cfg) => cfg.path,
-            Err(e) => format!("{:?}", e),
-        }
-    }
-
-    fn get_property_from_timesnapper_ini(&self, property: &str) -> String {
-        //first get path from this apps config using confy
-        let config_path = &self.get_config_path_from_confy();
-
-        let result_conf: Result<Ini, Error> = Ini::load_from_file_noescape(config_path);
-        match result_conf {
-            Ok(conf) => {
-                let section: &ini::ini::Properties = conf.section(None::<String>).unwrap();
-               section.get(property).unwrap().to_string()
-            }
-            Err(e) => match e {
-                Error::Io(io) => "This is probably an error because we do not know where your Timesnapper Settings.ini is\r\nYou should find it here:\r\nC:\\Users\\<your-user>\\AppData\\Roaming\\TimeSnapper\\Settings.ini\r\nPlease update your config.".to_string(),
-                Error::Parse(pe) => pe.msg,
-            },
-        }
+    fn exit(&self) {
+        nwg::stop_thread_dispatch();
     }
 
     fn about(&self) {
@@ -80,22 +78,6 @@ impl SystemTray {
     }
 
     fn todays_stats(&self) {
-        //nwg::simple_message("Hello", &self.get_todays_stats());
-        //nwg::simple_message("Hello", &self.get_todays_snapshots_folder());
-        self.get_todays_snapshots_folder()
-    }
-
-    fn notification(&self) {
-        let flags = nwg::TrayNotificationFlags::USER_ICON | nwg::TrayNotificationFlags::LARGE_ICON;
-        self.tray.show(
-            "Timesnapper checker",
-            Some("testy"),
-            Some(flags),
-            Some(&self.icon_warning),
-        );
-    }
-
-    fn get_todays_snapshots_folder(&self) {
         let config_path = self.get_property_from_timesnapper_ini("Path");
 
         let result = &self.get_vec_direntries(config_path.clone());
@@ -136,6 +118,31 @@ impl SystemTray {
             ),
         }
         //format!("get all folders from {}", &config_path)
+    }
+
+    fn get_property_from_timesnapper_ini(&self, property: &str) -> String {
+        //first get path from this apps config using confy
+        let config_path = &self.get_config_path_from_confy();
+
+        let result_conf: Result<Ini, Error> = Ini::load_from_file_noescape(config_path);
+        match result_conf {
+            Ok(conf) => {
+                let section: &ini::ini::Properties = conf.section(None::<String>).unwrap();
+               section.get(property).unwrap().to_string()
+            }
+            Err(e) => match e {
+                Error::Io(_io) => "This is probably an error because we do not know where your Timesnapper Settings.ini is\r\nYou should find it here:\r\nC:\\Users\\<your-user>\\AppData\\Roaming\\TimeSnapper\\Settings.ini\r\nPlease update your config.".to_string(),
+                Error::Parse(pe) => pe.msg,
+            },
+        }
+    }
+
+    fn get_config_path_from_confy(&self) -> String {
+        let result_cfg: Result<MyConfig, confy::ConfyError> = confy::load("rust-win-gui");
+        match result_cfg {
+            Ok(cfg) => cfg.path,
+            Err(e) => format!("{:?}", e),
+        }
     }
 
     fn get_last_hour_text(&self, last_hour_count: u32, last_hour_size_warning: u32) -> String {
@@ -184,29 +191,29 @@ impl SystemTray {
         let result_interval: Result<u32, std::num::ParseIntError> = interval_string.parse();
         let interval = match result_interval {
             Ok(i) => i,
-            Err(e) => 999,
+            Err(_e) => 999,
         };
         let total_seconds = count * interval;
         let total_minutes = count * interval / 60;
-        let total_hours = (total_seconds / 3600);
-        let remaining_minutes = total_minutes - (total_hours * 3600);
+        let total_hours = total_seconds / 3600;
+        let remaining_minutes = total_minutes - (total_hours * 60);
         if total_hours == 0 {
             if total_minutes == 0 {
-                format!("{:?}seconds", total_seconds)
+                format!("{:?} seconds", total_seconds)
             } else {
-                format!("{:?}mins", total_minutes)
+                format!("{:?} mins", total_minutes)
             }
         } else if remaining_minutes == 0 {
             if total_hours == 1 {
-                format!("{:?}hr", total_hours)
+                "1 hr".to_string()
             } else {
-                format!("{:?}hrs", total_hours)
+                format!("{:?} hrs", total_hours)
             }
         } else {
             if total_hours == 1 {
-                format!("{:?}hr {:?}mins", total_hours, remaining_minutes)
+                format!("1 hr {:?} mins", remaining_minutes)
             } else {
-                format!("{:?}hrs {:?}mins", total_hours, remaining_minutes)
+                format!("{:?} hrs {:?} mins", total_hours, remaining_minutes)
             }
         }
     }
@@ -219,14 +226,6 @@ impl SystemTray {
         Ok(result)
     }
 
-    /*fn get_vec_metadata(&self) -> Result<Result<Vec<std::fs::Metadata>, io::Error>, io::Error> {
-        let config_path = &self.get_property_from_timesnapper_ini();
-        let result = fs::read_dir(config_path)?
-            .map(|res| res.map(|e| e.metadata()))
-            .collect::<Result<Result<Vec<std::fs::Metadata>, io::Error>, io::Error>>()?;
-        Ok(result)
-    }*/
-
     fn get_todays_directory_path<'a>(
         &self,
         vec_direntries: &'a Vec<std::fs::DirEntry>,
@@ -237,7 +236,7 @@ impl SystemTray {
         let x = vec_direntries
             .iter()
             .filter(|d| {
-                let mut fname = d.file_name().into_string();
+                let fname = d.file_name().into_string();
                 match fname {
                     Ok(d) => {
                         if d == todays_date_as_string {
@@ -246,7 +245,7 @@ impl SystemTray {
                             return false;
                         }
                     }
-                    error => return false,
+                    _e => return false,
                 }
             })
             .collect::<Vec<&std::fs::DirEntry>>();
@@ -280,155 +279,6 @@ impl SystemTray {
                 println!("Error {:?}", e);
                 Vec::new()
             }
-        }
-    }
-
-    /*fn get_todays_stats(&self) -> String {
-        let mut content: String = "Files: ".to_string();
-        let result = &self.get_vec_metadata();
-        match result {
-            Ok(items_result) => {
-                match items_result {
-                    Ok(items) => {
-                        for item in items {
-                            //let path = pathBuf.into_os_string().into_string().unwrap();
-                            content = format!("{}{:?}", &content, &item);
-                        }
-                    }
-                    Err(_) => {}
-                }
-            }
-            Err(_) => {}
-        }
-
-        content
-    }*/
-
-    fn exit(&self) {
-        nwg::stop_thread_dispatch();
-    }
-}
-
-//
-// ALL of this stuff is handled by native-windows-derive
-//
-mod system_tray_ui {
-    use super::*;
-    use native_windows_gui as nwg;
-    use std::cell::RefCell;
-    use std::ops::Deref;
-    use std::rc::Rc;
-
-    pub struct SystemTrayUi {
-        inner: Rc<SystemTray>,
-        default_handler: RefCell<Vec<nwg::EventHandler>>,
-    }
-
-    impl nwg::NativeUi<SystemTrayUi> for SystemTray {
-        fn build_ui(mut data: SystemTray) -> Result<SystemTrayUi, nwg::NwgError> {
-            use nwg::Event as E;
-
-            // Resources
-            nwg::Icon::builder()
-                .source_file(Some("./resources/cog.ico"))
-                .build(&mut data.icon)?;
-
-            nwg::Icon::builder()
-                .source_file(Some("./resources/warning.ico"))
-                .build(&mut data.icon_warning)?;
-
-            // Controls
-            nwg::MessageWindow::builder().build(&mut data.window)?;
-
-            nwg::TrayNotification::builder()
-                .parent(&data.window)
-                .icon(Some(&data.icon))
-                .tip(Some("Right-click for menu"))
-                .build(&mut data.tray)?;
-
-            nwg::Menu::builder()
-                .popup(true)
-                .parent(&data.window)
-                .build(&mut data.tray_menu)?;
-
-            nwg::MenuItem::builder()
-                .text("Today's stats")
-                .parent(&data.tray_menu)
-                .build(&mut data.tray_item1)?;
-
-            nwg::MenuItem::builder()
-                .text("Settings")
-                .parent(&data.tray_menu)
-                .build(&mut data.tray_item2)?;
-
-            nwg::MenuItem::builder()
-                .text("Send Notification")
-                .parent(&data.tray_menu)
-                .build(&mut data.tray_item3)?;
-
-            nwg::MenuItem::builder()
-                .text("Exit")
-                .parent(&data.tray_menu)
-                .build(&mut data.tray_item4)?;
-
-            // Wrap-up
-            let ui = SystemTrayUi {
-                inner: Rc::new(data),
-                default_handler: Default::default(),
-            };
-
-            // Events
-            let evt_ui = Rc::downgrade(&ui.inner);
-            let handle_events = move |evt, _evt_data, handle| {
-                if let Some(evt_ui) = evt_ui.upgrade() {
-                    match evt {
-                        E::OnContextMenu => {
-                            if &handle == &evt_ui.tray {
-                                SystemTray::show_menu(&evt_ui);
-                            }
-                        }
-                        E::OnMenuItemSelected => {
-                            if &handle == &evt_ui.tray_item1 {
-                                SystemTray::todays_stats(&evt_ui);
-                            } else if &handle == &evt_ui.tray_item2 {
-                                SystemTray::about(&evt_ui);
-                            } else if &handle == &evt_ui.tray_item3 {
-                                SystemTray::notification(&evt_ui);
-                            } else if &handle == &evt_ui.tray_item4 {
-                                SystemTray::exit(&evt_ui);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            };
-
-            ui.default_handler
-                .borrow_mut()
-                .push(nwg::full_bind_event_handler(
-                    &ui.window.handle,
-                    handle_events,
-                ));
-
-            return Ok(ui);
-        }
-    }
-
-    impl Drop for SystemTrayUi {
-        /// To make sure that everything is freed without issues, the default handler must be unbound.
-        fn drop(&mut self) {
-            let mut handlers = self.default_handler.borrow_mut();
-            for handler in handlers.drain(0..) {
-                nwg::unbind_event_handler(&handler);
-            }
-        }
-    }
-
-    impl Deref for SystemTrayUi {
-        type Target = SystemTray;
-
-        fn deref(&self) -> &SystemTray {
-            &self.inner
         }
     }
 }
