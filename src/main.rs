@@ -1,4 +1,4 @@
-#![windows_subsystem = "windows"]
+//#![windows_subsystem = "windows"]
 /*!
     An application that runs in the system tray.
 
@@ -7,33 +7,79 @@
 
 extern crate chrono;
 extern crate ini;
+//extern crate job_scheduler;
 extern crate native_windows_derive as nwd;
 extern crate native_windows_gui as nwg;
 use chrono::{DateTime, Utc};
 use ini::ini::Error;
 use ini::Ini;
+//use job_scheduler::{Job, JobScheduler};
 use nwd::NwgUi;
 use nwg::NativeUi;
 use serde::{Deserialize, Serialize};
 use std::fs::{self};
 use std::io;
+use std::time::Duration;
+use std::{cell::RefCell, thread};
 
+//confy
 #[derive(Serialize, Deserialize)]
 struct MyConfig {
     path: String,
 }
 
-/// `MyConfig` implements `Default`
+/// confy `MyConfig` implements `Default`
 impl ::std::default::Default for MyConfig {
     fn default() -> Self {
         Self { path: "".into() }
     }
 }
 
+/// The dialog UI
+#[derive(Default, NwgUi)]
+pub struct ThreadingDialog {
+    data: RefCell<String>,
+
+    #[nwg_control(size: (300, 115), position: (650, 300), title: "A dialog", flags: "WINDOW|VISIBLE")]
+    #[nwg_events( OnWindowClose: [ThreadingDialog::close] )]
+    window: nwg::Window,
+
+    #[nwg_control(text: "YES", position: (10, 10), size: (130, 95))]
+    #[nwg_events( OnButtonClick: [ThreadingDialog::choose(SELF, CTRL)] )]
+    choice_yes: nwg::Button,
+
+    #[nwg_control(text: "NO", position: (160, 10), size: (130, 95), focus: true)]
+    #[nwg_events( OnButtonClick: [ThreadingDialog::choose(SELF, CTRL)] )]
+    choice_no: nwg::Button,
+}
+
+impl ThreadingDialog {
+    fn close(&self) {
+        nwg::stop_thread_dispatch();
+    }
+
+    fn choose(&self, btn: &nwg::Button) {
+        let mut data = self.data.borrow_mut();
+        if btn == &self.choice_no {
+            *data = "No!".to_string();
+        } else if btn == &self.choice_yes {
+            *data = "Yes!".to_string();
+        }
+
+        self.window.close();
+    }
+}
+
 #[derive(Default, NwgUi)]
 pub struct SystemTray {
+    dialog_data: RefCell<Option<thread::JoinHandle<String>>>,
+
     #[nwg_control]
     window: nwg::MessageWindow,
+
+    #[nwg_control]
+    #[nwg_events( OnNotice: [SystemTray::read_dialog_output] )]
+    dialog_notice: nwg::Notice,
 
     #[nwg_resource(source_file: Some("./resources/cog.ico"))]
     icon: nwg::Icon,
@@ -52,8 +98,8 @@ pub struct SystemTray {
     #[nwg_events(OnMenuItemSelected: [SystemTray::todays_stats])]
     tray_item1: nwg::MenuItem,
 
-    #[nwg_control(parent: tray_menu, text: "Settings")]
-    #[nwg_events(OnMenuItemSelected: [SystemTray::about])]
+    #[nwg_control(parent: tray_menu, text: "Open Dialog")]
+    #[nwg_events(OnMenuItemSelected: [SystemTray::open_dialog])]
     tray_item2: nwg::MenuItem,
 
     #[nwg_control(parent: tray_menu, text: "Exit")]
@@ -62,6 +108,39 @@ pub struct SystemTray {
 }
 
 impl SystemTray {
+    fn open_dialog(&self) {
+        let mut data = self.dialog_data.borrow_mut();
+        if data.is_some() {
+            nwg::error_message("Error", "The dialog is already running!");
+            return;
+        }
+
+        let notice = self.dialog_notice.sender();
+
+        *data = Some(thread::spawn(move || {
+            let app = ThreadingDialog::build_ui(Default::default()).expect("Failed to build UI");
+            nwg::dispatch_thread_events();
+
+            notice.notice();
+            {
+                let data = app.data.borrow();
+                data.clone()
+            }
+        }))
+    }
+
+    fn read_dialog_output(&self) {
+        let mut data = self.dialog_data.borrow_mut();
+        match data.take() {
+            Some(handle) => {
+                println!("do something with this: {:?}", &handle.join().unwrap());
+                //self.name_edit.set_text(&handle.join().unwrap());
+                //self.button.set_focus();
+            }
+            None => {}
+        }
+    }
+
     fn show_menu(&self) {
         let (x, y) = nwg::GlobalCursor::position();
         self.tray_menu.popup(x, y);
@@ -287,4 +366,14 @@ fn main() {
     nwg::init().expect("Failed to init Native Windows GUI");
     let _ui = SystemTray::build_ui(Default::default()).expect("Failed to build UI");
     nwg::dispatch_thread_events();
+
+    /*let mut sched = JobScheduler::new();
+    sched.add(Job::new("1/10 * * * * *".parse().unwrap(), || {
+        println!("I get executed every 10 seconds!");
+    }));
+
+    loop {
+        sched.tick();
+        std::thread::sleep(Duration::from_millis(500));
+    }*/
 }
