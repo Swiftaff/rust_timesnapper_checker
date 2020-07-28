@@ -1,4 +1,4 @@
-//#![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 /*!
     An application that runs in the system tray.
 
@@ -7,20 +7,16 @@
 
 extern crate chrono;
 extern crate ini;
-//extern crate job_scheduler;
 extern crate native_windows_derive as nwd;
 extern crate native_windows_gui as nwg;
 use chrono::{DateTime, Utc};
 use ini::ini::Error;
 use ini::Ini;
-//use job_scheduler::{Job, JobScheduler};
 use nwd::NwgUi;
 use nwg::NativeUi;
 use serde::{Deserialize, Serialize};
 use std::fs::{self};
 use std::io;
-use std::time::Duration;
-use std::{cell::RefCell, thread};
 
 //confy
 #[derive(Serialize, Deserialize)]
@@ -35,51 +31,10 @@ impl ::std::default::Default for MyConfig {
     }
 }
 
-/// The dialog UI
-#[derive(Default, NwgUi)]
-pub struct ThreadingDialog {
-    data: RefCell<String>,
-
-    #[nwg_control(size: (300, 115), position: (650, 300), title: "A dialog", flags: "WINDOW|VISIBLE")]
-    #[nwg_events( OnWindowClose: [ThreadingDialog::close] )]
-    window: nwg::Window,
-
-    #[nwg_control(text: "YES", position: (10, 10), size: (130, 95))]
-    #[nwg_events( OnButtonClick: [ThreadingDialog::choose(SELF, CTRL)] )]
-    choice_yes: nwg::Button,
-
-    #[nwg_control(text: "NO", position: (160, 10), size: (130, 95), focus: true)]
-    #[nwg_events( OnButtonClick: [ThreadingDialog::choose(SELF, CTRL)] )]
-    choice_no: nwg::Button,
-}
-
-impl ThreadingDialog {
-    fn close(&self) {
-        nwg::stop_thread_dispatch();
-    }
-
-    fn choose(&self, btn: &nwg::Button) {
-        let mut data = self.data.borrow_mut();
-        if btn == &self.choice_no {
-            *data = "No!".to_string();
-        } else if btn == &self.choice_yes {
-            *data = "Yes!".to_string();
-        }
-
-        self.window.close();
-    }
-}
-
 #[derive(Default, NwgUi)]
 pub struct SystemTray {
-    dialog_data: RefCell<Option<thread::JoinHandle<String>>>,
-
     #[nwg_control]
     window: nwg::MessageWindow,
-
-    #[nwg_control]
-    #[nwg_events( OnNotice: [SystemTray::read_dialog_output] )]
-    dialog_notice: nwg::Notice,
 
     #[nwg_resource(source_file: Some("./resources/cog.ico"))]
     icon: nwg::Icon,
@@ -98,49 +53,20 @@ pub struct SystemTray {
     #[nwg_events(OnMenuItemSelected: [SystemTray::todays_stats])]
     tray_item1: nwg::MenuItem,
 
-    #[nwg_control(parent: tray_menu, text: "Open Dialog")]
-    #[nwg_events(OnMenuItemSelected: [SystemTray::open_dialog])]
+    #[nwg_control(parent: tray_menu, text: "Settings")]
+    #[nwg_events(OnMenuItemSelected: [SystemTray::about])]
     tray_item2: nwg::MenuItem,
 
     #[nwg_control(parent: tray_menu, text: "Exit")]
     #[nwg_events(OnMenuItemSelected: [SystemTray::exit])]
     tray_item3: nwg::MenuItem,
+
+    #[nwg_control(parent: window, interval: 3600000, stopped: false)]
+    #[nwg_events(OnTimerTick: [SystemTray::todays_stats])]
+    timer: nwg::Timer,
 }
 
 impl SystemTray {
-    fn open_dialog(&self) {
-        let mut data = self.dialog_data.borrow_mut();
-        if data.is_some() {
-            nwg::error_message("Error", "The dialog is already running!");
-            return;
-        }
-
-        let notice = self.dialog_notice.sender();
-
-        *data = Some(thread::spawn(move || {
-            let app = ThreadingDialog::build_ui(Default::default()).expect("Failed to build UI");
-            nwg::dispatch_thread_events();
-
-            notice.notice();
-            {
-                let data = app.data.borrow();
-                data.clone()
-            }
-        }))
-    }
-
-    fn read_dialog_output(&self) {
-        let mut data = self.dialog_data.borrow_mut();
-        match data.take() {
-            Some(handle) => {
-                println!("do something with this: {:?}", &handle.join().unwrap());
-                //self.name_edit.set_text(&handle.join().unwrap());
-                //self.button.set_focus();
-            }
-            None => {}
-        }
-    }
-
     fn show_menu(&self) {
         let (x, y) = nwg::GlobalCursor::position();
         self.tray_menu.popup(x, y);
@@ -152,51 +78,78 @@ impl SystemTray {
 
     fn about(&self) {
         let config_path = &self.get_property_from_timesnapper_ini("Path");
-        let content = format!("This tool will read the contents of a folder at the specified path.\r\nYou can update the path via the config file.\r\nIt's probably saved here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}\r\n\r\n<div>Warning Icon made by https://www.flaticon.com/authors/vectors-market", config_path);
+        let content = format!("This tool will read the contents of a folder at the specified path, e.g. 'C:/Temp/Snapshots'.\r\nYou can update the path via the config file.\r\nIt's probably saved here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}\r\n\r\nWarning Icon made by https://www.flaticon.com/authors/vectors-market", config_path);
         nwg::simple_message("Settings", &content);
     }
 
     fn todays_stats(&self) {
         let config_path = self.get_property_from_timesnapper_ini("Path");
-
         let result = &self.get_vec_direntries(config_path.clone());
+
         match result {
-            Ok(vec_direntries) => {
-                let result_todays_directory_path = &self.get_todays_directory_path(vec_direntries);
-                let files = &self.get_todays_directory_files(result_todays_directory_path);
-                let str_time = &self.get_time_spent_string(files);
-                let (last_hour_count, last_hour_size_warning) =
-                    self.get_count_last_hours_files_too_small(files);
-                let notification_text =
-                    &self.get_last_hour_text(last_hour_count, last_hour_size_warning);
-                let icon = if last_hour_size_warning > 0 {
-                    &self.icon_warning
-                } else {
-                    &self.icon
-                };
-
-                //TODO
-                //elsewhere - run this every x minutes
-                //allow editing: ini location
-                //allow editing on/off times for notifications
-                //link to snapshots folder
-                //fix div in about, add other icon ref
-
-                let flags =
-                    nwg::TrayNotificationFlags::USER_ICON | nwg::TrayNotificationFlags::LARGE_ICON;
-                self.tray.show(
-                    notification_text,
-                    Some(&format!("{} so far today", str_time)),
-                    Some(flags),
-                    Some(icon),
-                );
+            Err(e) => {
+                self.notification_error(&format!(
+                    "Check your settings. Path may not be set: {:?} {:?}",
+                    config_path, e
+                ));
             }
-            Err(e) => println!(
-                "error from get_vec_direntries -- {} -- {:?}",
-                config_path, e
-            ),
+            Ok(vec_direntries) => {
+                let result_todays_directory = self.get_todays_directory_path(vec_direntries);
+                match result_todays_directory {
+                    Err(e) => self.notification_error(&e),
+                    Ok(todays_directory) => {
+                        let path = todays_directory.path();
+                        let result_files =
+                            self.get_vec_direntries(path.as_os_str().to_str().unwrap().to_string());
+                        match result_files {
+                            Err(e) => self.notification_error(&format!(
+                                "There was an error reading from todays directory: {:?}",
+                                e
+                            )),
+                            Ok(files) => {
+                                let str_time = &self.get_time_spent_string(&files);
+                                let (total_snapshots_today, total_warnings_today) =
+                                    self.get_count_last_hours_files_too_small(&files);
+                                let notification_flags = if total_warnings_today > 5 {
+                                    nwg::TrayNotificationFlags::WARNING_ICON
+                                } else {
+                                    nwg::TrayNotificationFlags::USER_ICON
+                                };
+
+                                self.tray.show(
+                                    &self.get_last_hour_text(
+                                        total_snapshots_today,
+                                        total_warnings_today,
+                                    ),
+                                    Some(&format!("Timesnapper: {:?}", str_time)),
+                                    Some(notification_flags),
+                                    Some(&self.icon),
+                                );
+
+                                //TODO
+                                //elsewhere - run this every x minutes
+                                //allow editing: ini location
+                                //allow editing on/off times for notifications
+                                //link to snapshots folder
+                                //add other icon ref
+                            }
+                        }
+                    }
+                }
+            }
         }
-        //format!("get all folders from {}", &config_path)
+    }
+
+    fn notification_error(&self, notification_text: &str) {
+        let mut notification_flags = nwg::TrayNotificationFlags::ERROR_ICON;
+        let mut notification_title = "Timesnapper Checker";
+        let mut notification_icon = &self.icon;
+        &self.tray.show(
+            notification_text,
+            Some(notification_title),
+            Some(notification_flags),
+            Some(notification_icon),
+        );
     }
 
     fn get_property_from_timesnapper_ini(&self, property: &str) -> String {
@@ -224,44 +177,30 @@ impl SystemTray {
         }
     }
 
-    fn get_last_hour_text(&self, last_hour_count: u32, last_hour_size_warning: u32) -> String {
-        let last_hour_spent = self.get_hrs_mins(last_hour_count);
-        if last_hour_size_warning == 1 {
-            format!(
-                "*1* Timesnapper BLANK during {} of the last hour",
-                last_hour_spent
-            )
-        } else if last_hour_size_warning > 1 {
-            format!(
-                "*{:?}* Timesnapper BLANKS during {} of the last hour",
-                last_hour_size_warning, last_hour_spent
-            )
-        } else {
-            format!("{} snapped in the last hour", last_hour_spent)
-        }
+    fn get_last_hour_text(&self, total_snapshots_today: u32, total_warnings_today: u32) -> String {
+        let total_spent = self.get_hrs_mins(total_snapshots_today);
+        format!(
+            "{:?} Timesnapper BLANKS from today's {}",
+            total_warnings_today, total_spent
+        )
     }
 
     fn get_count_last_hours_files_too_small(&self, files: &Vec<std::fs::DirEntry>) -> (u32, u32) {
-        let mut last_hour_count: u32 = 0;
-        let mut last_hour_size_warning: u32 = 0;
+        let mut total_snapshots_today = files.len() as u32;
+        let mut total_warnings_today: u32 = 0;
         for entry in files {
             let metadata = entry.metadata().unwrap();
-            let last_modified = metadata.modified().unwrap().elapsed().unwrap().as_secs();
             let filesize = metadata.len();
-            println!("{:?}", filesize);
-
-            if last_modified < 24 * 3600 {
-                last_hour_count += 1;
-                if filesize < 80000 {
-                    last_hour_size_warning += 1;
-                }
+            if filesize < 80000 {
+                total_warnings_today += 1;
             }
         }
-        (last_hour_count, last_hour_size_warning)
+        (total_snapshots_today, total_warnings_today)
     }
 
     fn get_time_spent_string(&self, files: &Vec<std::fs::DirEntry>) -> String {
         let count = files.len() as u32;
+        println!("count: {:?}", count);
         self.get_hrs_mins(count)
     }
 
@@ -273,8 +212,8 @@ impl SystemTray {
             Err(_e) => 999,
         };
         let total_seconds = count * interval;
-        let total_minutes = count * interval / 60;
-        let total_hours = total_seconds / 3600;
+        let total_minutes = total_seconds / 60;
+        let total_hours = total_minutes / 60;
         let remaining_minutes = total_minutes - (total_hours * 60);
         if total_hours == 0 {
             if total_minutes == 0 {
@@ -298,10 +237,8 @@ impl SystemTray {
     }
 
     fn get_vec_direntries(&self, config_path: String) -> Result<Vec<std::fs::DirEntry>, io::Error> {
-        let result = fs::read_dir(&config_path)?
-            //.filter_map(|r| r.ok())
-            //.map(|res| res.map(|e| e.metadata()))
-            .collect::<Result<Vec<std::fs::DirEntry>, io::Error>>()?;
+        let result =
+            fs::read_dir(&config_path)?.collect::<Result<Vec<std::fs::DirEntry>, io::Error>>()?;
         Ok(result)
     }
 
@@ -331,33 +268,7 @@ impl SystemTray {
         if x.len() == 1 {
             Ok(x[0])
         } else {
-            Err(format!("{:?}", x))
-        }
-    }
-
-    fn get_todays_directory_files<'a>(
-        &self,
-        result_todays_directory: &Result<&'a std::fs::DirEntry, String>,
-    ) -> Vec<std::fs::DirEntry> {
-        match result_todays_directory {
-            Ok(direntry) => {
-                let path = direntry.path(); //format!("{}", direntry.path());
-
-                let result =
-                    self.get_vec_direntries(path.as_os_str().to_str().unwrap().to_string());
-                println!("path {:?}", path);
-                match result {
-                    Ok(vec_dir_entries) => vec_dir_entries,
-                    Err(e) => {
-                        println!("Error {:?}", e);
-                        Vec::new()
-                    }
-                }
-            }
-            Err(e) => {
-                println!("Error {:?}", e);
-                Vec::new()
-            }
+            Err(format!("There was an error finding todays directory. Check your config Settings, or the folder doesn't exist{:?}", todays_date_as_string))
         }
     }
 }
@@ -366,14 +277,4 @@ fn main() {
     nwg::init().expect("Failed to init Native Windows GUI");
     let _ui = SystemTray::build_ui(Default::default()).expect("Failed to build UI");
     nwg::dispatch_thread_events();
-
-    /*let mut sched = JobScheduler::new();
-    sched.add(Job::new("1/10 * * * * *".parse().unwrap(), || {
-        println!("I get executed every 10 seconds!");
-    }));
-
-    loop {
-        sched.tick();
-        std::thread::sleep(Duration::from_millis(500));
-    }*/
 }
