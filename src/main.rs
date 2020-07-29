@@ -39,9 +39,8 @@ pub struct SystemTray {
     #[nwg_resource(source_file: Some("./resources/cog.ico"))]
     icon: nwg::Icon,
 
-    #[nwg_resource(source_file: Some("./resources/warning.ico"))]
-    icon_warning: nwg::Icon,
-
+    //#[nwg_resource(source_file: Some("./resources/warning.ico"))]
+    //icon_warning: nwg::Icon,
     #[nwg_control(icon: Some(&data.icon), tip: Some("Right-click for menu"))]
     #[nwg_events(OnContextMenu: [SystemTray::show_menu])]
     tray: nwg::TrayNotification,
@@ -78,7 +77,7 @@ impl SystemTray {
 
     fn about(&self) {
         let config_path = &self.get_property_from_timesnapper_ini("Path");
-        let content = format!("This tool will read the contents of a folder at the specified path, e.g. 'C:/Temp/Snapshots'.\r\nYou can update the path via the config file.\r\nIt's probably saved here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}\r\n\r\nWarning Icon made by https://www.flaticon.com/authors/vectors-market", config_path);
+        let content = format!("This tool will read the contents of the Timesnapper Snapshots folder.\r\nYou must update the path via the config file which is probably saved somewhere like here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}", config_path);
         nwg::simple_message("Settings", &content);
     }
 
@@ -107,23 +106,26 @@ impl SystemTray {
                                 e
                             )),
                             Ok(files) => {
-                                let str_time = &self.get_time_spent_string(&files);
-                                let (total_snapshots_today, total_warnings_today) =
+                                //let (total_minutes_today, total_warnings_today) =
+                                //    (0 as u32, 0 as u32);
+                                let (total_minutes_today, total_warnings_today) =
                                     self.get_count_last_hours_files_too_small(&files);
-                                let notification_flags = if total_warnings_today > 5 {
+                                let warnings_as_time = self.get_hrs_mins(total_warnings_today / 60);
+                                let str_time = self.get_hrs_mins(total_minutes_today);
+                                let notification_flags = if total_warnings_today > 300 {
                                     nwg::TrayNotificationFlags::WARNING_ICON
                                 } else {
                                     nwg::TrayNotificationFlags::USER_ICON
                                 };
 
                                 self.tray.show(
-                                    &self.get_last_hour_text(
-                                        total_snapshots_today,
-                                        total_warnings_today,
+                                    &format!(
+                                        "{} ({}) Timesnapper BLANKS",
+                                        warnings_as_time, total_warnings_today
                                     ),
-                                    Some(&format!("Timesnapper: {:?}", str_time)),
+                                    Some(&format!("Timesnapper Checker: {}", str_time)),
                                     Some(notification_flags),
-                                    Some(&self.icon),
+                                    None,
                                 );
 
                                 //TODO
@@ -141,9 +143,9 @@ impl SystemTray {
     }
 
     fn notification_error(&self, notification_text: &str) {
-        let mut notification_flags = nwg::TrayNotificationFlags::ERROR_ICON;
-        let mut notification_title = "Timesnapper Checker";
-        let mut notification_icon = &self.icon;
+        let notification_flags = nwg::TrayNotificationFlags::ERROR_ICON;
+        let notification_title = "Timesnapper Checker";
+        let notification_icon = &self.icon;
         &self.tray.show(
             notification_text,
             Some(notification_title),
@@ -177,50 +179,45 @@ impl SystemTray {
         }
     }
 
-    fn get_last_hour_text(&self, total_snapshots_today: u32, total_warnings_today: u32) -> String {
-        let total_spent = self.get_hrs_mins(total_snapshots_today);
-        format!(
-            "{:?} Timesnapper BLANKS from today's {}",
-            total_warnings_today, total_spent
-        )
-    }
-
     fn get_count_last_hours_files_too_small(&self, files: &Vec<std::fs::DirEntry>) -> (u32, u32) {
-        let mut total_snapshots_today = files.len() as u32;
+        let mut total_minutes_today: u32 = 0;
         let mut total_warnings_today: u32 = 0;
+        let mut prev_hr_min = "".to_string();
         for entry in files {
             let metadata = entry.metadata().unwrap();
+
+            //check if the hrs and minutes of the filename match the previously counted
+            //if not, count it and update the previous for the next check
+            let file = entry.file_name();
+            let option_filename = file.to_str();
+            match option_filename {
+                Some(filename) => {
+                    let split = filename.split(".");
+                    let vec = split.collect::<Vec<&str>>();
+                    let filename_just_hr_min = format!("{}{}", vec[0], vec[1]);
+
+                    if filename_just_hr_min != prev_hr_min {
+                        //println!("{}...{}", filename_just_hr_min, total_minutes_today);
+                        total_minutes_today += 1;
+                        prev_hr_min = filename_just_hr_min;
+                    }
+                }
+                None => {}
+            }
+
             let filesize = metadata.len();
             if filesize < 80000 {
                 total_warnings_today += 1;
             }
         }
-        (total_snapshots_today, total_warnings_today)
+        (total_minutes_today, total_warnings_today)
     }
 
-    fn get_time_spent_string(&self, files: &Vec<std::fs::DirEntry>) -> String {
-        let count = files.len() as u32;
-        println!("count: {:?}", count);
-        self.get_hrs_mins(count)
-    }
-
-    fn get_hrs_mins(&self, count: u32) -> String {
-        let interval_string = self.get_property_from_timesnapper_ini("Interval");
-        let result_interval: Result<u32, std::num::ParseIntError> = interval_string.parse();
-        let interval = match result_interval {
-            Ok(i) => i,
-            Err(_e) => 999,
-        };
-        let total_seconds = count * interval;
-        let total_minutes = total_seconds / 60;
+    fn get_hrs_mins(&self, total_minutes: u32) -> String {
         let total_hours = total_minutes / 60;
         let remaining_minutes = total_minutes - (total_hours * 60);
         if total_hours == 0 {
-            if total_minutes == 0 {
-                format!("{:?} seconds", total_seconds)
-            } else {
-                format!("{:?} mins", total_minutes)
-            }
+            format!("{:?} mins", total_minutes)
         } else if remaining_minutes == 0 {
             if total_hours == 1 {
                 "1 hr".to_string()
