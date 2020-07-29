@@ -319,8 +319,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust_win_gui"
-version = "0.1.0"
+name = "rust_timesnapper_checker"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "confy",

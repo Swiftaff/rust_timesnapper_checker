@@ -1,10 +1,4 @@
 #![windows_subsystem = "windows"]
-/*!
-    An application that runs in the system tray.
-
-    See also note for distributing... https://gabdube.github.io/native-windows-gui/native-windows-docs/distribute.html
-*/
-
 extern crate chrono;
 extern crate ini;
 extern crate native_windows_derive as nwd;
@@ -18,13 +12,13 @@ use serde::{Deserialize, Serialize};
 use std::fs::{self};
 use std::io;
 
-//confy
+// confy
 #[derive(Serialize, Deserialize)]
 struct MyConfig {
     path: String,
 }
 
-/// confy `MyConfig` implements `Default`
+// confy `MyConfig` implements `Default`
 impl ::std::default::Default for MyConfig {
     fn default() -> Self {
         Self { path: "".into() }
@@ -39,9 +33,7 @@ pub struct SystemTray {
     #[nwg_resource(source_file: Some("./resources/cog.ico"))]
     icon: nwg::Icon,
 
-    //#[nwg_resource(source_file: Some("./resources/warning.ico"))]
-    //icon_warning: nwg::Icon,
-    #[nwg_control(icon: Some(&data.icon), tip: Some("Right-click for menu"))]
+    #[nwg_control(icon: Some(&data.icon), tip: Some("Timesnapper Checker(right-click)"))]
     #[nwg_events(OnContextMenu: [SystemTray::show_menu])]
     tray: nwg::TrayNotification,
 
@@ -52,11 +44,11 @@ pub struct SystemTray {
     #[nwg_events(OnMenuItemSelected: [SystemTray::todays_stats])]
     tray_item1: nwg::MenuItem,
 
-    #[nwg_control(parent: tray_menu, text: "Settings")]
+    #[nwg_control(parent: tray_menu, text: "About Timesnapper Checker...")]
     #[nwg_events(OnMenuItemSelected: [SystemTray::about])]
     tray_item2: nwg::MenuItem,
 
-    #[nwg_control(parent: tray_menu, text: "Exit")]
+    #[nwg_control(parent: tray_menu, text: "Exit...")]
     #[nwg_events(OnMenuItemSelected: [SystemTray::exit])]
     tray_item3: nwg::MenuItem,
 
@@ -77,8 +69,8 @@ impl SystemTray {
 
     fn about(&self) {
         let config_path = &self.get_property_from_timesnapper_ini("Path");
-        let content = format!("This tool will read the contents of the Timesnapper Snapshots folder.\r\nYou must update the path via the config file which is probably saved somewhere like here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}", config_path);
-        nwg::simple_message("Settings", &content);
+        let content = format!("https://github.com/Swiftaff/rust_timesnapper_checker\r\n\r\nTimesnapper Checker will read the contents of the Timesnapper Snapshots folder.\r\nYou must update the path via the config file which is probably saved somewhere like here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}", config_path);
+        nwg::simple_message("About Timesnapper Checker", &content);
     }
 
     fn todays_stats(&self) {
@@ -106,8 +98,6 @@ impl SystemTray {
                                 e
                             )),
                             Ok(files) => {
-                                //let (total_minutes_today, total_warnings_today) =
-                                //    (0 as u32, 0 as u32);
                                 let (total_minutes_today, total_warnings_today) =
                                     self.get_count_last_hours_files_too_small(&files);
                                 let warnings_as_time = self.get_hrs_mins(total_warnings_today / 60);
@@ -129,11 +119,9 @@ impl SystemTray {
                                 );
 
                                 //TODO
-                                //elsewhere - run this every x minutes
                                 //allow editing: ini location
                                 //allow editing on/off times for notifications
                                 //link to snapshots folder
-                                //add other icon ref
                             }
                         }
                     }
@@ -197,7 +185,6 @@ impl SystemTray {
                     let filename_just_hr_min = format!("{}{}", vec[0], vec[1]);
 
                     if filename_just_hr_min != prev_hr_min {
-                        //println!("{}...{}", filename_just_hr_min, total_minutes_today);
                         total_minutes_today += 1;
                         prev_hr_min = filename_just_hr_min;
                     }
@@ -245,7 +232,6 @@ impl SystemTray {
     ) -> Result<&'a std::fs::DirEntry, String> {
         let now: DateTime<Utc> = Utc::now();
         let todays_date_as_string = format!("{}", now.format("%Y-%m-%d"));
-        //println!("{:?}", todays_date_as_string);
         let x = vec_direntries
             .iter()
             .filter(|d| {

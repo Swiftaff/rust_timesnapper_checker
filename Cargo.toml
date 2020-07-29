@@ -1,10 +1,8 @@
 [package]
-name = "rust_win_gui"
-version = "0.1.0"
+name = "rust_timesnapper_checker"
+version = "1.0.0"
 authors = ["swiftaff <swiftaff@gmail.com>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 native-windows-gui = {version = "1.0.1", features = ["file-dialog", "color-dialog", "font-dialog", "datetime-picker", "progress-bar", "timer", "notice", "list-view", "cursor", "image-decoder",
