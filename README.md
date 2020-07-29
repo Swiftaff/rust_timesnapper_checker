@@ -53,7 +53,7 @@ You can also, right-click the tray for a menu
 
 ## b) Installation of latest release
 
--   Download the release.zip
+-   Download the release https://github.com/Swiftaff/rust_timesnapper_checker/releases/download/1.0.0/rust_timesnapper_checker_v1.zip
 -   Expand it
 -   double-click the rust_timesnapper_checker.exe !
 
