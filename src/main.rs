@@ -44,6 +44,9 @@ pub struct SystemTray {
     #[nwg_events(OnMenuItemSelected: [SystemTray::todays_stats])]
     tray_item1: nwg::MenuItem,
 
+    #[nwg_control(parent: tray_menu)]
+    tray_separator: nwg::MenuSeparator,
+
     #[nwg_control(parent: tray_menu, text: "About Timesnapper Checker...")]
     #[nwg_events(OnMenuItemSelected: [SystemTray::about])]
     tray_item2: nwg::MenuItem,

@@ -1,9 +1,9 @@
 # Rust Timesnapper checker
 
-Timesnapper is great, but sometimes it will save a whole day of blank screengrabs without you realising!
+Timesnapper (https://www.timesnapper.com) is great, but sometimes it will save a whole day of blank screengrabs without you realising!
 
 Timesnapper checker is designed to run in your Windows System Tray.
-It's basically an excuse to play with this fantastic library: https://github.com/gabdube/native-windows-gui
+This app is basically an excuse to play with this fantastic library: https://github.com/gabdube/native-windows-gui
 
 This app will automatically popup a notification every hour (from initial launch, not on the hour) with a helpful reminder of:
 
@@ -30,7 +30,7 @@ You can also, right-click the tray for a menu
 -   manually create a new folder where you want this to live, e.g.
     `C:/Users/***yourusername***/Program Files/TimesnapperChecker/`
 
--   copy `/target/release/rust_timesnapper_checkerd.exe` to the folder
+-   copy `/target/release/rust_timesnapper_checker.exe` to the folder
 
 -   copy the `/resources/` containing the `cog.ico` into the folder
 
@@ -38,9 +38,9 @@ You can also, right-click the tray for a menu
 
 ```
 //C:/Users/***yourusername***/Program Files/TimesnapperChecker/
-//  rust_timesnapper_checkerd.exe
+//  rust_timesnapper_checker.exe
 //  resources
 //    cog.ico
 ```
 
--   double-click the rust_timesnapper_checkerd.exe !
+-   double-click the rust_timesnapper_checker.exe !
