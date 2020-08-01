@@ -11,7 +11,6 @@ use nwg::NativeUi;
 use serde::{Deserialize, Serialize};
 use std::fs::{self};
 use std::io;
-use std::rc::Rc;
 
 // confy
 #[derive(Serialize, Deserialize)]
@@ -44,11 +43,18 @@ fn get_property_from_timesnapper_ini(property: &str) -> String {
 }
 
 fn get_path_from_confy() -> String {
-    let result_cfg: Result<MyConfig, confy::ConfyError> = confy::load("rust-win-gui");
+    let result_cfg: Result<MyConfig, confy::ConfyError> = confy::load("rust-timesnapper-checker");
     match result_cfg {
         Ok(cfg) => cfg.path,
         Err(e) => format!("{:?}", e),
     }
+}
+
+fn save_path_to_confy(path: &str) -> Result<(), confy::ConfyError> {
+    let my_cfg = MyConfig {
+        path: path.to_string(),
+    };
+    confy::store("rust-timesnapper-checker", my_cfg)
 }
 #[derive(Default, NwgUi)]
 pub struct SystemTray {
@@ -74,8 +80,8 @@ pub struct SystemTray {
     #[nwg_control(parent: tray_menu)]
     tray_separator: nwg::MenuSeparator,
 
-    #[nwg_control(parent: tray_menu, text: "About Timesnapper Checker...")]
-    #[nwg_events(OnMenuItemSelected: [SystemTray::about])]
+    #[nwg_control(parent: tray_menu, text: "Timesnapper Checker Settings...")]
+    #[nwg_events(OnMenuItemSelected: [SystemTray::display_settings_window])]
     tray_item2: nwg::MenuItem,
 
     #[nwg_control(parent: tray_menu, text: "Exit...")]
@@ -100,13 +106,6 @@ impl SystemTray {
 
     fn exit(&self) {
         nwg::stop_thread_dispatch();
-    }
-
-    fn about(&self) {
-        self.display_settings_window();
-        //let config_path = get_property_from_timesnapper_ini("Path");
-        //let content = format!("https://github.com/Swiftaff/rust_timesnapper_checker\r\n\r\nTimesnapper Checker will read the contents of the Timesnapper Snapshots folder.\r\nYou must update the path via the config file which is probably saved somewhere like here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}", config_path);
-        //nwg::simple_message("About Timesnapper Checker", &content);
     }
 
     fn todays_stats(&self) {
@@ -269,38 +268,114 @@ impl SystemTray {
 
 #[derive(Default, NwgUi)]
 pub struct SettingsPopup {
-    #[nwg_control(size: (600, 115), position: (300, 300), title: "Timesnapper Checker Settings", flags: "WINDOW|VISIBLE")]
-    #[nwg_events( OnWindowClose: [SettingsPopup::say_goodbye] )]
+    #[nwg_control(size: (800, 220), position: (600, 600), title: "Timesnapper Checker Settings", flags: "WINDOW|VISIBLE")]
+    #[nwg_events( OnWindowClose: [SettingsPopup::close] )]
     window: nwg::Window,
 
     #[nwg_layout(parent: window, spacing: 1)]
     grid: nwg::GridLayout,
 
-    #[nwg_control(text: "Location of your Timesnapper Settings.ini ?")]
-    #[nwg_layout_item(layout: grid, row: 0, col: 0, colspan: 2)]
-    label_ini_path_description1: nwg::Label,
+    #[nwg_control(text: "https://github.com/Swiftaff/rust_timesnapper_checker")]
+    #[nwg_layout_item(layout: grid, row: 0, col: 0, col_span: 5)]
+    intro1: nwg::Label,
 
-    #[nwg_control(text: &get_path_from_confy())]
-    #[nwg_layout_item(layout: grid, row: 1, col: 0)]
-    label_ini_path: nwg::Label,
+    #[nwg_control(text: "Timesnapper Checker needs to know where the Timesnapper 'Settings.ini' file is located.")]
+    #[nwg_layout_item(layout: grid, row: 1, col: 0, col_span: 5)]
+    intro2: nwg::Label,
 
-    //#[nwg_control(text: &get_path_from_confy(), focus: true)]
-    //#[nwg_layout_item(layout: grid, row: 2, col: 0)]
-    //name_edit: nwg::TextInput,
-    #[nwg_control(text: "Change...")]
-    #[nwg_layout_item(layout: grid, row: 2, col: 1, rowspan: 2)]
-    #[nwg_events( OnButtonClick: [SettingsPopup::say_hello] )]
-    hello_button: nwg::Button,
+    #[nwg_control(text: "Please select it  - it is probably somewhere like here...")]
+    #[nwg_layout_item(layout: grid, row: 2, col: 0, col_span: 5)]
+    intro3: nwg::Label,
+
+    #[nwg_control(text: "  C:\\Users\\%USERPROFILE%\\AppData\\Roaming\\TimeSnapper\\Settings.ini")]
+    #[nwg_layout_item(layout: grid, row: 3, col: 0, col_span: 5)]
+    intro4: nwg::Label,
+
+    #[nwg_control(text: &get_path_from_confy(), flags: "VISIBLE|DISABLED")]
+    #[nwg_layout_item(layout: grid, row: 4, col: 0, col_span: 5)]
+    ini_path: nwg::TextInput,
+
+    #[nwg_resource(title:"Timesnapper Checker - Select Settings.ini",action: nwg::FileDialogAction::Open, filters: "Ini(*.ini)")]
+    file_dialog: nwg::FileDialog,
+
+    #[nwg_control(text: "Select...",focus: true)]
+    #[nwg_layout_item(layout: grid, row: 4, col: 5)]
+    #[nwg_events( OnButtonClick: [SettingsPopup::ini_path_selector] )]
+    button_change: nwg::Button,
+
+    #[nwg_control(text: "")]
+    #[nwg_layout_item(layout: grid, row: 5, col: 0, col_span: 5)]
+    space1: nwg::Label,
+
+    #[nwg_control(text: "Save Changes", enabled: false)]
+    #[nwg_layout_item(layout: grid, row: 6, col: 0)]
+    #[nwg_events( OnButtonClick: [SettingsPopup::save] )]
+    button_save: nwg::Button,
+
+    #[nwg_control(text: "Cancel")]
+    #[nwg_layout_item(layout: grid, row: 6, col: 1)]
+    #[nwg_events( OnButtonClick: [SettingsPopup::cancel] )]
+    button_cancel: nwg::Button,
+
+    #[nwg_control(text: "")]
+    #[nwg_layout_item(layout: grid, row: 7, col: 0, col_span: 5)]
+    space2: nwg::Label,
+
+    #[nwg_control(text: "", flags:"NONE")]
+    #[nwg_layout_item(layout: grid, row: 7, col: 0)]
+    state_is_dirty: nwg::Label,
 }
 
 impl SettingsPopup {
-    fn say_hello(&self) {
-        nwg::simple_message("Hello", &format!("Hello {}", "test"));
+    fn cancel(&self) {
+        nwg::stop_thread_dispatch();
     }
 
-    fn say_goodbye(&self) {
-        //nwg::simple_message("Goodbye", &format!("Goodbye {}", self.name_edit.text()));
+    fn close(&self) {
+        if &self.state_is_dirty.text().len() > &(0 as usize) {
+            &self.state_is_dirty.set_text("");
+            let p = nwg::MessageParams {
+                title: "Do you want to save the changes you made?",
+                content: "Your changes will be lost if you don't save them.",
+                buttons: nwg::MessageButtons::YesNoCancel,
+                icons: nwg::MessageIcons::Warning,
+            };
+            let result = nwg::message(&p);
+            //nwg::simple_message("About Timesnapper Checker", &format!("{:?}", &result));
+            if &result == &nwg::MessageChoice::Yes {
+                &self.save();
+            } else if &result == &nwg::MessageChoice::No {
+                nwg::stop_thread_dispatch();
+            }
+        } else {
+            nwg::stop_thread_dispatch();
+        }
+    }
+
+    fn save(&self) {
+        let result = save_path_to_confy(&self.ini_path.text());
+        match result {
+            Ok(_) => {
+                nwg::simple_message("Timesnapper Checker - Saving settings", "saved");
+            }
+            Err(e) => {
+                nwg::error_message(
+                    "Timesnapper Checker - Saving settings",
+                    &format!("NOT saved - error: {:?}", e),
+                );
+            }
+        }
         nwg::stop_thread_dispatch();
+    }
+
+    fn ini_path_selector(&self) {
+        if self.file_dialog.run(Some(&self.window)) {
+            if let Ok(file) = self.file_dialog.get_selected_item() {
+                self.ini_path.set_text(&file);
+                self.button_save.set_enabled(true);
+                self.state_is_dirty.set_text("change made");
+            }
+        }
     }
 }
 
