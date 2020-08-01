@@ -11,6 +11,7 @@ use nwg::NativeUi;
 use serde::{Deserialize, Serialize};
 use std::fs::{self};
 use std::io;
+use std::rc::Rc;
 
 // confy
 #[derive(Serialize, Deserialize)]
@@ -25,14 +26,40 @@ impl ::std::default::Default for MyConfig {
     }
 }
 
+fn get_property_from_timesnapper_ini(property: &str) -> String {
+    //first get path from this apps config using confy
+    let config_path = &get_path_from_confy();
+
+    let result_conf: Result<Ini, Error> = Ini::load_from_file_noescape(config_path);
+    match result_conf {
+        Ok(conf) => {
+            let section: &ini::ini::Properties = conf.section(None::<String>).unwrap();
+           section.get(property).unwrap().to_string()
+        }
+        Err(e) => match e {
+            Error::Io(_io) => "This is probably an error because we do not know where your Timesnapper Settings.ini is\r\nYou should find it here:\r\nC:\\Users\\<your-user>\\AppData\\Roaming\\TimeSnapper\\Settings.ini\r\nPlease update your config.".to_string(),
+            Error::Parse(pe) => pe.msg,
+        },
+    }
+}
+
+fn get_path_from_confy() -> String {
+    let result_cfg: Result<MyConfig, confy::ConfyError> = confy::load("rust-win-gui");
+    match result_cfg {
+        Ok(cfg) => cfg.path,
+        Err(e) => format!("{:?}", e),
+    }
+}
 #[derive(Default, NwgUi)]
 pub struct SystemTray {
+    //parent window
     #[nwg_control]
     window: nwg::MessageWindow,
 
     #[nwg_resource(source_file: Some("./resources/cog.ico"))]
     icon: nwg::Icon,
 
+    //system tray
     #[nwg_control(icon: Some(&data.icon), tip: Some("Timesnapper Checker(right-click)"))]
     #[nwg_events(OnContextMenu: [SystemTray::show_menu])]
     tray: nwg::TrayNotification,
@@ -66,18 +93,24 @@ impl SystemTray {
         self.tray_menu.popup(x, y);
     }
 
+    fn display_settings_window(&self) {
+        let _app = SettingsPopup::build_ui(Default::default()).expect("Failed to build UI");
+        nwg::dispatch_thread_events();
+    }
+
     fn exit(&self) {
         nwg::stop_thread_dispatch();
     }
 
     fn about(&self) {
-        let config_path = &self.get_property_from_timesnapper_ini("Path");
-        let content = format!("https://github.com/Swiftaff/rust_timesnapper_checker\r\n\r\nTimesnapper Checker will read the contents of the Timesnapper Snapshots folder.\r\nYou must update the path via the config file which is probably saved somewhere like here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}", config_path);
-        nwg::simple_message("About Timesnapper Checker", &content);
+        self.display_settings_window();
+        //let config_path = get_property_from_timesnapper_ini("Path");
+        //let content = format!("https://github.com/Swiftaff/rust_timesnapper_checker\r\n\r\nTimesnapper Checker will read the contents of the Timesnapper Snapshots folder.\r\nYou must update the path via the config file which is probably saved somewhere like here\r\n'C:/Users/<yourusername>/AppData/Roaming/rust-win-gui/config'\r\n\r\nCurrent Path is:\r\n{:?}", config_path);
+        //nwg::simple_message("About Timesnapper Checker", &content);
     }
 
     fn todays_stats(&self) {
-        let config_path = self.get_property_from_timesnapper_ini("Path");
+        let config_path = get_property_from_timesnapper_ini("Path");
         let result = &self.get_vec_direntries(config_path.clone());
 
         match result {
@@ -143,31 +176,6 @@ impl SystemTray {
             Some(notification_flags),
             Some(notification_icon),
         );
-    }
-
-    fn get_property_from_timesnapper_ini(&self, property: &str) -> String {
-        //first get path from this apps config using confy
-        let config_path = &self.get_config_path_from_confy();
-
-        let result_conf: Result<Ini, Error> = Ini::load_from_file_noescape(config_path);
-        match result_conf {
-            Ok(conf) => {
-                let section: &ini::ini::Properties = conf.section(None::<String>).unwrap();
-               section.get(property).unwrap().to_string()
-            }
-            Err(e) => match e {
-                Error::Io(_io) => "This is probably an error because we do not know where your Timesnapper Settings.ini is\r\nYou should find it here:\r\nC:\\Users\\<your-user>\\AppData\\Roaming\\TimeSnapper\\Settings.ini\r\nPlease update your config.".to_string(),
-                Error::Parse(pe) => pe.msg,
-            },
-        }
-    }
-
-    fn get_config_path_from_confy(&self) -> String {
-        let result_cfg: Result<MyConfig, confy::ConfyError> = confy::load("rust-win-gui");
-        match result_cfg {
-            Ok(cfg) => cfg.path,
-            Err(e) => format!("{:?}", e),
-        }
     }
 
     fn get_count_last_hours_files_too_small(&self, files: &Vec<std::fs::DirEntry>) -> (u32, u32) {
@@ -259,8 +267,46 @@ impl SystemTray {
     }
 }
 
+#[derive(Default, NwgUi)]
+pub struct SettingsPopup {
+    #[nwg_control(size: (600, 115), position: (300, 300), title: "Timesnapper Checker Settings", flags: "WINDOW|VISIBLE")]
+    #[nwg_events( OnWindowClose: [SettingsPopup::say_goodbye] )]
+    window: nwg::Window,
+
+    #[nwg_layout(parent: window, spacing: 1)]
+    grid: nwg::GridLayout,
+
+    #[nwg_control(text: "Location of your Timesnapper Settings.ini ?")]
+    #[nwg_layout_item(layout: grid, row: 0, col: 0, colspan: 2)]
+    label_ini_path_description1: nwg::Label,
+
+    #[nwg_control(text: &get_path_from_confy())]
+    #[nwg_layout_item(layout: grid, row: 1, col: 0)]
+    label_ini_path: nwg::Label,
+
+    //#[nwg_control(text: &get_path_from_confy(), focus: true)]
+    //#[nwg_layout_item(layout: grid, row: 2, col: 0)]
+    //name_edit: nwg::TextInput,
+    #[nwg_control(text: "Change...")]
+    #[nwg_layout_item(layout: grid, row: 2, col: 1, rowspan: 2)]
+    #[nwg_events( OnButtonClick: [SettingsPopup::say_hello] )]
+    hello_button: nwg::Button,
+}
+
+impl SettingsPopup {
+    fn say_hello(&self) {
+        nwg::simple_message("Hello", &format!("Hello {}", "test"));
+    }
+
+    fn say_goodbye(&self) {
+        //nwg::simple_message("Goodbye", &format!("Goodbye {}", self.name_edit.text()));
+        nwg::stop_thread_dispatch();
+    }
+}
+
 fn main() {
     nwg::init().expect("Failed to init Native Windows GUI");
+    nwg::Font::set_global_family("Segoe UI").expect("Failed to set default font");
     let _ui = SystemTray::build_ui(Default::default()).expect("Failed to build UI");
     nwg::dispatch_thread_events();
 }
