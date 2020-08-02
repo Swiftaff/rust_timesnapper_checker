@@ -16,12 +16,16 @@ use std::io;
 #[derive(Serialize, Deserialize)]
 struct MyConfig {
     path: String,
+    blank_max_filesize: String,
 }
 
 // confy `MyConfig` implements `Default`
 impl ::std::default::Default for MyConfig {
     fn default() -> Self {
-        Self { path: "".into() }
+        Self {
+            path: "".into(),
+            blank_max_filesize: "80000".into(),
+        }
     }
 }
 
@@ -46,13 +50,22 @@ fn get_path_from_confy() -> String {
     let result_cfg: Result<MyConfig, confy::ConfyError> = confy::load("rust-timesnapper-checker");
     match result_cfg {
         Ok(cfg) => cfg.path,
-        Err(e) => format!("{:?}", e),
+        Err(_) => "".to_string(),
     }
 }
 
-fn save_path_to_confy(path: &str) -> Result<(), confy::ConfyError> {
+fn get_blank_max_filesize_from_confy() -> String {
+    let result_cfg: Result<MyConfig, confy::ConfyError> = confy::load("rust-timesnapper-checker");
+    match result_cfg {
+        Ok(cfg) => cfg.blank_max_filesize,
+        Err(_) => "80000".to_string(),
+    }
+}
+
+fn save_to_confy(path: &str, blank_max_filesize: &str) -> Result<(), confy::ConfyError> {
     let my_cfg = MyConfig {
         path: path.to_string(),
+        blank_max_filesize: blank_max_filesize.to_string(),
     };
     confy::store("rust-timesnapper-checker", my_cfg)
 }
@@ -181,6 +194,15 @@ impl SystemTray {
         let mut total_minutes_today: u32 = 0;
         let mut total_warnings_today: u32 = 0;
         let mut prev_hr_min = "".to_string();
+
+        let string_blank_max_filesize = get_blank_max_filesize_from_confy();
+        let result_blank_max_filesize: Result<u64, std::num::ParseIntError> =
+            string_blank_max_filesize.parse();
+        let blank_max_filesize = match result_blank_max_filesize {
+            Ok(val) => val,
+            Err(_) => 80000 as u64,
+        };
+
         for entry in files {
             let metadata = entry.metadata().unwrap();
 
@@ -203,7 +225,7 @@ impl SystemTray {
             }
 
             let filesize = metadata.len();
-            if filesize < 80000 {
+            if filesize < blank_max_filesize {
                 total_warnings_today += 1;
             }
         }
@@ -268,17 +290,24 @@ impl SystemTray {
 
 #[derive(Default, NwgUi)]
 pub struct SettingsPopup {
-    #[nwg_control(size: (800, 180), position: (600, 600), title: "Timesnapper Checker Settings", flags: "WINDOW|VISIBLE")]
+    //height roughly 30 * rows?
+    #[nwg_control(size: (800, 300), position: (600, 600), title: "Timesnapper Checker Settings", flags: "WINDOW|VISIBLE")]
     #[nwg_events( OnWindowClose: [SettingsPopup::close] )]
     window: nwg::Window,
 
     #[nwg_layout(parent: window, spacing: 1)]
     grid: nwg::GridLayout,
 
+    #[nwg_control(text: "", flags:"NONE")]
+    #[nwg_layout_item(layout: grid, row: 0, col: 0)]
+    state_is_dirty: nwg::Label,
+
+    //title
     #[nwg_control(text: "Timesnapper Checker needs to know where the Timesnapper 'Settings.ini' file is located.")]
     #[nwg_layout_item(layout: grid, row: 0, col: 0, col_span: 5)]
     intro2: nwg::Label,
 
+    //Settings ini path field
     #[nwg_control(text: "It is usually here: C:\\Users\\%USERPROFILE%\\AppData\\Roaming\\TimeSnapper\\Settings.ini")]
     #[nwg_layout_item(layout: grid, row: 2, col: 0, col_span: 5)]
     intro3: nwg::Label,
@@ -295,30 +324,42 @@ pub struct SettingsPopup {
     #[nwg_events( OnButtonClick: [SettingsPopup::ini_path_selector] )]
     button_change: nwg::Button,
 
-    #[nwg_control(text: "")]
-    #[nwg_layout_item(layout: grid, row: 4, col: 0, col_span: 5)]
-    space1: nwg::Label,
+    //filesize field
+    #[nwg_control(text: "Timesnapper checker identifies blank screengrabs by their filesize.")]
+    #[nwg_layout_item(layout: grid, row: 5, col: 0, col_span: 5)]
+    label_blank_max_filesize1: nwg::Label,
 
+    #[nwg_control(text: "This will change depending on screen resolution, file format.")]
+    #[nwg_layout_item(layout: grid, row: 6, col: 0, col_span: 5)]
+    label_blank_max_filesize2: nwg::Label,
+
+    #[nwg_control(text: "Enter a value (in bytes) slightly bigger than a typical blank (Default 80000 = 80Kb)")]
+    #[nwg_layout_item(layout: grid, row: 7, col: 0, col_span: 5)]
+    label_blank_max_filesize3: nwg::Label,
+
+    #[nwg_control(text: &get_blank_max_filesize_from_confy(), flags: "VISIBLE")]
+    #[nwg_layout_item(layout: grid, row: 8, col: 0, col_span: 6)]
+    #[nwg_events( OnTextInput: [SettingsPopup::filesize_dirty] )]
+    blank_max_filesize: nwg::TextInput,
+
+    //save and cancel
     #[nwg_control(text: "Save Changes", enabled: false)]
-    #[nwg_layout_item(layout: grid, row: 5, col: 0)]
+    #[nwg_layout_item(layout: grid, row: 10, col: 0)]
     #[nwg_events( OnButtonClick: [SettingsPopup::save] )]
     button_save: nwg::Button,
 
     #[nwg_control(text: "Cancel")]
-    #[nwg_layout_item(layout: grid, row: 5, col: 1)]
+    #[nwg_layout_item(layout: grid, row: 10, col: 1)]
     #[nwg_events( OnButtonClick: [SettingsPopup::cancel] )]
     button_cancel: nwg::Button,
-
-    #[nwg_control(text: "")]
-    #[nwg_layout_item(layout: grid, row: 6, col: 0, col_span: 5)]
-    space2: nwg::Label,
-
-    #[nwg_control(text: "", flags:"NONE")]
-    #[nwg_layout_item(layout: grid, row: 6, col: 0)]
-    state_is_dirty: nwg::Label,
 }
 
 impl SettingsPopup {
+    fn filesize_dirty(&self) {
+        self.button_save.set_enabled(true);
+        self.state_is_dirty.set_text("filesize changed");
+    }
+
     fn cancel(&self) {
         nwg::stop_thread_dispatch();
     }
@@ -345,10 +386,10 @@ impl SettingsPopup {
     }
 
     fn save(&self) {
-        let result = save_path_to_confy(&self.ini_path.text());
+        let result = save_to_confy(&self.ini_path.text(), &self.blank_max_filesize.text());
         match result {
             Ok(_) => {
-                nwg::simple_message("Timesnapper Checker - Saving settings", "saved");
+                nwg::simple_message("Timesnapper Checker - Saving settings", "Saved");
             }
             Err(e) => {
                 nwg::error_message(
@@ -365,7 +406,7 @@ impl SettingsPopup {
             if let Ok(file) = self.file_dialog.get_selected_item() {
                 self.ini_path.set_text(&file);
                 self.button_save.set_enabled(true);
-                self.state_is_dirty.set_text("change made");
+                self.state_is_dirty.set_text("path changed");
             }
         }
     }
