@@ -6,70 +6,98 @@ use nwd::NwgUi;
 #[derive(Default, NwgUi)]
 pub struct SettingsPopup {
     //height roughly 30 * rows?
-    #[nwg_control(size: (800, 300), position: (600, 600), title: "Timesnapper Checker Settings", flags: "WINDOW|VISIBLE")]
-    #[nwg_events( OnWindowClose: [SettingsPopup::close] )]
+    #[nwg_control(size: (800, 250), position: (600, 600), title: "Timesnapper Checker Settings", flags: "WINDOW|VISIBLE")]
+    #[nwg_events( OnWindowClose: [SettingsPopup::close], OnInit: [SettingsPopup::fonty] )]
     window: nwg::Window,
 
+    //#[nwg_resource(size: 6, family: "Comic Sans")]
+    //#[nwg_layout_item(layout: grid, row: 0, col: 0)]
+    //font: nwg::Font,
     #[nwg_layout(parent: window, spacing: 1)]
     grid: nwg::GridLayout,
 
     #[nwg_control(text: "", flags:"NONE")]
-    #[nwg_layout_item(layout: grid, row: 0, col: 0)]
+    #[nwg_layout_item(layout: grid, row: 1, col: 0)]
     state_is_dirty: nwg::Label,
 
-    //title
-    #[nwg_control(text: "Timesnapper Checker needs to know where the Timesnapper 'Settings.ini' file is located.")]
-    #[nwg_layout_item(layout: grid, row: 0, col: 0, col_span: 5)]
-    intro2: nwg::Label,
-
     //Settings ini path field
-    #[nwg_control(text: "It is usually here: C:\\Users\\%USERPROFILE%\\AppData\\Roaming\\TimeSnapper\\Settings.ini")]
-    #[nwg_layout_item(layout: grid, row: 2, col: 0, col_span: 5)]
-    intro3: nwg::Label,
+    #[nwg_control(text: "Settings.ini")]
+    #[nwg_layout_item(layout: grid, row: 1, col: 0, col_span: 1)]
+    ini_path_main_label: nwg::Label,
 
     #[nwg_control(text: &get_path_from_confy(), flags: "VISIBLE|DISABLED")]
-    #[nwg_layout_item(layout: grid, row: 3, col: 0, col_span: 5)]
+    #[nwg_layout_item(layout: grid, row: 1, col: 1, col_span: 4)]
     ini_path: nwg::TextInput,
 
     #[nwg_resource(title:"Timesnapper Checker - Select Settings.ini",action: nwg::FileDialogAction::Open, filters: "Ini(*.ini)")]
-    file_dialog: nwg::FileDialog,
+    ini_path_file_dialog: nwg::FileDialog,
 
     #[nwg_control(text: "Select...",focus: true)]
-    #[nwg_layout_item(layout: grid, row: 3, col: 5)]
+    #[nwg_layout_item(layout: grid, row: 1, col: 5)]
     #[nwg_events( OnButtonClick: [SettingsPopup::ini_path_selector] )]
-    button_change: nwg::Button,
+    ini_path_button_change: nwg::Button,
+
+    #[nwg_control(text: "Timesnapper Checker needs to know where the Timesnapper 'Settings.ini' file is located.\r\nIt is usually here: C:\\Users\\%USERPROFILE%\\AppData\\Roaming\\TimeSnapper\\Settings.ini")]
+    #[nwg_layout_item(layout: grid, row: 2, col: 1, col_span: 4, row_span: 2)]
+    ini_path_help_label: nwg::Label,
 
     //filesize field
-    #[nwg_control(text: "Timesnapper checker identifies blank screengrabs by their filesize.")]
-    #[nwg_layout_item(layout: grid, row: 5, col: 0, col_span: 5)]
-    label_blank_max_filesize1: nwg::Label,
-
-    #[nwg_control(text: "This will change depending on screen resolution, file format.")]
-    #[nwg_layout_item(layout: grid, row: 6, col: 0, col_span: 5)]
-    label_blank_max_filesize2: nwg::Label,
-
-    #[nwg_control(text: "Enter a value (in bytes) slightly bigger than a typical blank (Default 80000 = 80Kb)")]
-    #[nwg_layout_item(layout: grid, row: 7, col: 0, col_span: 5)]
-    label_blank_max_filesize3: nwg::Label,
+    #[nwg_control(text: "Blank filesize")]
+    #[nwg_layout_item(layout: grid, row: 4, col: 0, col_span: 1)]
+    filesize_main_label: nwg::Label,
 
     #[nwg_control(text: &get_blank_max_filesize_from_confy(), flags: "VISIBLE")]
-    #[nwg_layout_item(layout: grid, row: 8, col: 0, col_span: 6)]
+    #[nwg_layout_item(layout: grid, row: 4, col: 1, col_span: 1)]
     #[nwg_events( OnTextInput: [SettingsPopup::filesize_dirty] )]
-    blank_max_filesize: nwg::TextInput,
+    filesize: nwg::TextInput,
+
+    #[nwg_control(text: "Timesnapper checker identifies blank screengrabs by their filesize - which can vary depending on your settings.\r\nEnter a value such as 80000 = 80Kb")]
+    #[nwg_layout_item(layout: grid, row: 5, col: 1, col_span: 5, row_span: 2)]
+    filesize_help_label: nwg::Label,
 
     //save and cancel
     #[nwg_control(text: "Save Changes", enabled: false)]
-    #[nwg_layout_item(layout: grid, row: 10, col: 0)]
+    #[nwg_layout_item(layout: grid, row: 7, col: 4)]
     #[nwg_events( OnButtonClick: [SettingsPopup::save] )]
     button_save: nwg::Button,
 
     #[nwg_control(text: "Cancel")]
-    #[nwg_layout_item(layout: grid, row: 10, col: 1)]
+    #[nwg_layout_item(layout: grid, row: 7, col: 5)]
     #[nwg_events( OnButtonClick: [SettingsPopup::cancel] )]
     button_cancel: nwg::Button,
 }
 
 impl SettingsPopup {
+    fn get_font_of_size(&self, size: u32, is_bold: bool) -> nwg::Font {
+        let mut font = Default::default();
+        nwg::Font::builder()
+            .size(size)
+            .family("Segoe UI")
+            .weight(if is_bold { 700 } else { 400 })
+            .build(&mut font)
+            .expect("Failed to build font");
+        font
+    }
+
+    fn fonty(&self) {
+        self.ini_path_main_label
+            .set_font(Some(&self.get_font_of_size(18, true)));
+        self.ini_path_help_label
+            .set_font(Some(&self.get_font_of_size(14, false)));
+        self.ini_path
+            .set_font(Some(&self.get_font_of_size(18, false)));
+        self.ini_path_button_change
+            .set_font(Some(&self.get_font_of_size(18, false)));
+
+        //
+        self.filesize_main_label
+            .set_font(Some(&self.get_font_of_size(18, true)));
+        self.filesize_help_label
+            .set_font(Some(&self.get_font_of_size(14, false)));
+        self.filesize
+            .set_font(Some(&self.get_font_of_size(18, false)));
+    }
+
     fn filesize_dirty(&self) {
         self.button_save.set_enabled(true);
         self.state_is_dirty.set_text("filesize changed");
@@ -101,7 +129,7 @@ impl SettingsPopup {
     }
 
     fn save(&self) {
-        let result = save_to_confy(&self.ini_path.text(), &self.blank_max_filesize.text());
+        let result = save_to_confy(&self.ini_path.text(), &self.filesize.text());
         match result {
             Ok(_) => {
                 nwg::simple_message("Timesnapper Checker - Saving settings", "Saved");
@@ -117,8 +145,8 @@ impl SettingsPopup {
     }
 
     fn ini_path_selector(&self) {
-        if self.file_dialog.run(Some(&self.window)) {
-            if let Ok(file) = self.file_dialog.get_selected_item() {
+        if self.ini_path_file_dialog.run(Some(&self.window)) {
+            if let Ok(file) = self.ini_path_file_dialog.get_selected_item() {
                 self.ini_path.set_text(&file);
                 self.button_save.set_enabled(true);
                 self.state_is_dirty.set_text("path changed");
