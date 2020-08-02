@@ -261,68 +261,60 @@ impl SystemTray {
         if x.len() == 1 {
             Ok(x[0])
         } else {
-            Err(format!("There was an error finding todays directory. Check your config Settings, or the folder doesn't exist{:?}", todays_date_as_string))
+            Err(format!("There was an error finding todays directory. Check your config Settings, or the folder doesn't exist: {:?}", todays_date_as_string))
         }
     }
 }
 
 #[derive(Default, NwgUi)]
 pub struct SettingsPopup {
-    #[nwg_control(size: (800, 220), position: (600, 600), title: "Timesnapper Checker Settings", flags: "WINDOW|VISIBLE")]
+    #[nwg_control(size: (800, 180), position: (600, 600), title: "Timesnapper Checker Settings", flags: "WINDOW|VISIBLE")]
     #[nwg_events( OnWindowClose: [SettingsPopup::close] )]
     window: nwg::Window,
 
     #[nwg_layout(parent: window, spacing: 1)]
     grid: nwg::GridLayout,
 
-    #[nwg_control(text: "https://github.com/Swiftaff/rust_timesnapper_checker")]
-    #[nwg_layout_item(layout: grid, row: 0, col: 0, col_span: 5)]
-    intro1: nwg::Label,
-
     #[nwg_control(text: "Timesnapper Checker needs to know where the Timesnapper 'Settings.ini' file is located.")]
-    #[nwg_layout_item(layout: grid, row: 1, col: 0, col_span: 5)]
+    #[nwg_layout_item(layout: grid, row: 0, col: 0, col_span: 5)]
     intro2: nwg::Label,
 
-    #[nwg_control(text: "Please select it  - it is probably somewhere like here...")]
+    #[nwg_control(text: "It is usually here: C:\\Users\\%USERPROFILE%\\AppData\\Roaming\\TimeSnapper\\Settings.ini")]
     #[nwg_layout_item(layout: grid, row: 2, col: 0, col_span: 5)]
     intro3: nwg::Label,
 
-    #[nwg_control(text: "  C:\\Users\\%USERPROFILE%\\AppData\\Roaming\\TimeSnapper\\Settings.ini")]
-    #[nwg_layout_item(layout: grid, row: 3, col: 0, col_span: 5)]
-    intro4: nwg::Label,
-
     #[nwg_control(text: &get_path_from_confy(), flags: "VISIBLE|DISABLED")]
-    #[nwg_layout_item(layout: grid, row: 4, col: 0, col_span: 5)]
+    #[nwg_layout_item(layout: grid, row: 3, col: 0, col_span: 5)]
     ini_path: nwg::TextInput,
 
     #[nwg_resource(title:"Timesnapper Checker - Select Settings.ini",action: nwg::FileDialogAction::Open, filters: "Ini(*.ini)")]
     file_dialog: nwg::FileDialog,
 
     #[nwg_control(text: "Select...",focus: true)]
-    #[nwg_layout_item(layout: grid, row: 4, col: 5)]
+    #[nwg_layout_item(layout: grid, row: 3, col: 5)]
     #[nwg_events( OnButtonClick: [SettingsPopup::ini_path_selector] )]
     button_change: nwg::Button,
 
     #[nwg_control(text: "")]
-    #[nwg_layout_item(layout: grid, row: 5, col: 0, col_span: 5)]
+    #[nwg_layout_item(layout: grid, row: 4, col: 0, col_span: 5)]
     space1: nwg::Label,
 
     #[nwg_control(text: "Save Changes", enabled: false)]
-    #[nwg_layout_item(layout: grid, row: 6, col: 0)]
+    #[nwg_layout_item(layout: grid, row: 5, col: 0)]
     #[nwg_events( OnButtonClick: [SettingsPopup::save] )]
     button_save: nwg::Button,
 
     #[nwg_control(text: "Cancel")]
-    #[nwg_layout_item(layout: grid, row: 6, col: 1)]
+    #[nwg_layout_item(layout: grid, row: 5, col: 1)]
     #[nwg_events( OnButtonClick: [SettingsPopup::cancel] )]
     button_cancel: nwg::Button,
 
     #[nwg_control(text: "")]
-    #[nwg_layout_item(layout: grid, row: 7, col: 0, col_span: 5)]
+    #[nwg_layout_item(layout: grid, row: 6, col: 0, col_span: 5)]
     space2: nwg::Label,
 
     #[nwg_control(text: "", flags:"NONE")]
-    #[nwg_layout_item(layout: grid, row: 7, col: 0)]
+    #[nwg_layout_item(layout: grid, row: 6, col: 0)]
     state_is_dirty: nwg::Label,
 }
 
